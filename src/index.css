@@ -1,24 +1,134 @@
 @import "tailwindcss";
 
+/* ============================================================
+   InsureMEP Brand Theme — GenMedia Hub
+   Navy Deep #1E3A8A · Tech Blue #3B82F6 · Bright Indigo #743EE4
+   Steel Gray #6B7280
+   ============================================================ */
 @theme {
-  --color-navy: #1a2e5a;
-  --color-tech-blue: hsl(218, 85%, 47%);
-  --color-indigo: #7c3aed;
-  --color-steel: #64748b;
-  --color-success: #16a34a;
-  --color-alert: #ea580c;
-  --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --color-navy: #1E3A8A;
+  --color-navy-deep: #16306e;
+  --color-tech-blue: #3B82F6;
+  --color-indigo: #743EE4;
+  --color-steel: #6B7280;
+  --color-success: #10B981;
+  --color-alert: #F59E0B;
+
+  --font-family-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 }
 
 @layer base {
   body {
-    @apply bg-white text-steel font-sans;
+    @apply bg-white text-steel font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(116, 62, 228, 0.18);
+    color: #1E3A8A;
+  }
+
+  /* Refined focus ring for keyboard users */
+  :focus-visible {
+    outline: 2px solid var(--color-tech-blue);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
+/* ============================================================
+   Motion system
+   ============================================================ */
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -468px 0; }
+  100% { background-position: 468px 0; }
+}
+
+@keyframes float-glow {
+  0%, 100% { opacity: 0.5; transform: translateY(0); }
+  50%      { opacity: 0.9; transform: translateY(-6px); }
+}
+
+/* Scroll-reveal: starts hidden, animates when .in-view is added */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal.in-view {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Stagger helper — children fade in sequentially */
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.reveal-stagger.in-view > * {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}
+
+/* ============================================================
+   Shared component utilities (used by dashboard, Tailwind side)
+   ============================================================ */
 @layer components {
   .btn-primary {
     @apply px-6 py-3 rounded-lg bg-navy text-white font-semibold
-           hover:bg-navy/90 transition-all duration-200;
+           transition-all duration-300;
+  }
+  .btn-primary:hover {
+    background: var(--color-navy-deep);
+    box-shadow: 0 8px 24px -6px rgba(30, 58, 138, 0.5);
+    transform: translateY(-2px);
+  }
+
+  /* Shimmer skeleton block */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #eef1f6;
+    border-radius: 10px;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.65) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    animation: shimmer-sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer-sweep {
+    100% { transform: translateX(100%); }
   }
 }

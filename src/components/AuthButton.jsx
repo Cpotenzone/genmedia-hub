@@ -3,8 +3,9 @@ import { LogIn, LogOut, User } from "lucide-react";
 import { auth, googleProvider } from "../lib/firebase";
 import { signInWithPopup, signOut } from "firebase/auth";
 
-export default function AuthButton({ user }) {
+export default function AuthButton({ user, onSignIn }) {
   const handleSignIn = async () => {
+    if (onSignIn) return onSignIn();
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
@@ -28,22 +29,22 @@ export default function AuthButton({ user }) {
             <img
               src={user.photoURL}
               alt={user.displayName}
-              className="w-8 h-8 rounded-full ring-2 ring-white/30"
+              className="w-8 h-8 rounded-full ring-2 ring-tech-blue/30"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-tech-blue flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy to-indigo flex items-center justify-center">
               <User className="w-4 h-4 text-white" />
             </div>
           )}
-          <span className="text-sm text-white/80 hidden sm:block">
+          <span className="text-sm font-medium text-navy hidden sm:block">
             {user.displayName?.split(" ")[0]}
           </span>
         </div>
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-white/80 hover:text-white
-                     border border-white/20 rounded-lg hover:border-white/40
-                     transition-all duration-200 hover:bg-white/10"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-steel hover:text-navy
+                     border border-gray-200 rounded-lg hover:border-tech-blue/40
+                     transition-all duration-300 hover:bg-gray-50"
         >
           <LogOut className="w-4 h-4" />
           <span className="hidden sm:block">Sign Out</span>
@@ -55,9 +56,10 @@ export default function AuthButton({ user }) {
   return (
     <button
       onClick={handleSignIn}
-      className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-navy
-                 bg-white hover:bg-gray-100
-                 rounded-lg transition-all duration-200 shadow-md"
+      className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white
+                 bg-gradient-to-br from-navy to-indigo hover:shadow-lg hover:-translate-y-0.5
+                 rounded-lg transition-all duration-300 shadow-md
+                 shadow-navy/20 hover:shadow-indigo/40"
     >
       <LogIn className="w-4 h-4" />
       Sign In with Google
