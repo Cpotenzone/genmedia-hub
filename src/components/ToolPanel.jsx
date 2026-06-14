@@ -12,7 +12,7 @@ import { auth } from "../lib/firebase";
 
 function FormField({ param, value, onChange }) {
   const baseInputClasses =
-    "w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all duration-200";
+    "w-full bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-navy placeholder-gray-400 focus:outline-none focus:border-tech-blue focus:ring-2 focus:ring-tech-blue/20 transition-all duration-200";
 
   switch (param.type) {
     case "textarea":
@@ -35,9 +35,7 @@ function FormField({ param, value, onChange }) {
           className={`${baseInputClasses} appearance-none cursor-pointer`}
         >
           {param.options.map((opt) => (
-            <option key={opt} value={opt} className="bg-gray-900">
-              {opt}
-            </option>
+            <option key={opt} value={opt}>{opt}</option>
           ))}
         </select>
       );
@@ -52,9 +50,9 @@ function FormField({ param, value, onChange }) {
             step={param.step}
             value={value || param.default || param.min}
             onChange={(e) => onChange(param.name, parseFloat(e.target.value))}
-            className="flex-1 h-2 rounded-full appearance-none bg-white/[0.08] accent-purple-500 cursor-pointer"
+            className="flex-1"
           />
-          <span className="text-sm text-gray-400 min-w-[3ch] text-right font-mono">
+          <span className="text-sm text-steel min-w-[3ch] text-right font-mono">
             {value || param.default || param.min}
           </span>
         </div>
@@ -89,8 +87,8 @@ function ResultDisplay({ result, resultType }) {
 
   if (result.error) {
     return (
-      <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-        <p className="text-sm text-red-400">{result.error}</p>
+      <div className="mt-6 p-4 rounded-xl bg-red-50 border border-red-200">
+        <p className="text-sm text-red-600">{result.error}</p>
       </div>
     );
   }
@@ -99,19 +97,11 @@ function ResultDisplay({ result, resultType }) {
     case "image":
       return (
         <div className="mt-6 space-y-3">
-          <div className="relative rounded-xl overflow-hidden border border-white/[0.08]">
-            <img
-              src={result.url || result.data}
-              alt="Generated"
-              className="w-full h-auto"
-            />
+          <div className="relative rounded-xl overflow-hidden border border-gray-200">
+            <img src={result.url || result.data} alt="Generated" className="w-full h-auto" />
           </div>
           {result.url && (
-            <a
-              href={result.url}
-              download
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:text-white border border-white/[0.08] rounded-lg hover:bg-white/5 transition-all"
-            >
+            <a href={result.url} download className="inline-flex items-center gap-2 px-3 py-1.5 text-xs text-steel hover:text-navy border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
               <Download className="w-3.5 h-3.5" />
               Download
             </a>
@@ -121,12 +111,8 @@ function ResultDisplay({ result, resultType }) {
 
     case "video":
       return (
-        <div className="mt-6 rounded-xl overflow-hidden border border-white/[0.08]">
-          <video
-            controls
-            className="w-full"
-            src={result.url}
-          >
+        <div className="mt-6 rounded-xl overflow-hidden border border-gray-200">
+          <video controls className="w-full" src={result.url}>
             Your browser does not support the video tag.
           </video>
         </div>
@@ -134,7 +120,7 @@ function ResultDisplay({ result, resultType }) {
 
     case "audio":
       return (
-        <div className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/[0.08]">
+        <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
           <audio controls className="w-full" src={result.url}>
             Your browser does not support the audio tag.
           </audio>
@@ -144,30 +130,19 @@ function ResultDisplay({ result, resultType }) {
     case "text":
       return (
         <div className="mt-6 relative">
-          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.08] max-h-96 overflow-y-auto">
-            <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">
-              {result.text}
-            </pre>
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 max-h-96 overflow-y-auto">
+            <pre className="text-sm text-navy whitespace-pre-wrap font-sans leading-relaxed">{result.text}</pre>
           </div>
-          <button
-            onClick={handleCopy}
-            className="absolute top-3 right-3 p-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
-          >
-            {copied ? (
-              <Check className="w-3.5 h-3.5 text-green-400" />
-            ) : (
-              <Copy className="w-3.5 h-3.5 text-gray-400" />
-            )}
+          <button onClick={handleCopy} className="absolute top-3 right-3 p-1.5 rounded-md bg-white hover:bg-gray-100 border border-gray-200 transition-all">
+            {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5 text-steel" />}
           </button>
         </div>
       );
 
     default:
       return (
-        <div className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/[0.08]">
-          <pre className="text-sm text-gray-300 whitespace-pre-wrap">
-            {JSON.stringify(result, null, 2)}
-          </pre>
+        <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
+          <pre className="text-sm text-navy whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
         </div>
       );
   }
@@ -177,9 +152,7 @@ export default function ToolPanel({ tool, server, onClose }) {
   const [formData, setFormData] = useState(() => {
     const defaults = {};
     tool.parameters.forEach((p) => {
-      if (p.default !== undefined) {
-        defaults[p.name] = p.default;
-      }
+      if (p.default !== undefined) defaults[p.name] = p.default;
     });
     return defaults;
   });
@@ -203,10 +176,7 @@ export default function ToolPanel({ tool, server, onClose }) {
         `${import.meta.env.VITE_API_BASE_URL || ""}/api/mcp/${server.id}/${tool.id}`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify(formData),
         }
       );
@@ -226,47 +196,33 @@ export default function ToolPanel({ tool, server, onClose }) {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-white/[0.06]">
+    <div className="h-full flex flex-col bg-white">
+      <div className="flex items-center justify-between p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition-all"
-          >
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-steel hover:text-navy transition-all">
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h2 className="text-lg font-semibold text-white">{tool.name}</h2>
-            <p className="text-xs text-gray-500">{server.name}</p>
+            <h2 className="text-lg font-bold text-navy">{tool.name}</h2>
+            <p className="text-xs text-steel">{server.name}</p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition-all"
-        >
+        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-steel hover:text-navy transition-all">
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        <p className="text-sm text-gray-400 mb-6">{tool.description}</p>
+        <p className="text-sm text-steel mb-6">{tool.description}</p>
 
         <form onSubmit={handleExecute} className="space-y-5">
           {tool.parameters.map((param) => (
             <div key={param.name}>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-navy mb-2">
                 {param.label}
-                {param.required && (
-                  <span className="text-purple-400 ml-1">*</span>
-                )}
+                {param.required && <span className="text-indigo ml-1">*</span>}
               </label>
-              <FormField
-                param={param}
-                value={formData[param.name]}
-                onChange={handleChange}
-              />
+              <FormField param={param} value={formData[param.name]} onChange={handleChange} />
             </div>
           ))}
 
@@ -274,41 +230,28 @@ export default function ToolPanel({ tool, server, onClose }) {
             type="submit"
             disabled={loading}
             className="w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white
-                       bg-gradient-to-r from-purple-600 to-blue-600
-                       hover:from-purple-500 hover:to-blue-500
+                       bg-navy hover:bg-navy/90
                        disabled:opacity-50 disabled:cursor-not-allowed
-                       rounded-xl transition-all duration-200
-                       shadow-lg shadow-purple-500/20 hover:shadow-purple-500/30"
+                       rounded-lg transition-all duration-200 shadow-md"
           >
             {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Processing...
-              </>
+              <><Loader2 className="w-4 h-4 animate-spin" />Processing...</>
             ) : (
-              <>
-                <Play className="w-4 h-4" />
-                Execute
-              </>
+              <><Play className="w-4 h-4" />Execute</>
             )}
           </button>
         </form>
 
-        {/* Loading animation */}
         {loading && (
           <div className="mt-8 flex flex-col items-center gap-4 py-8">
             <div className="relative w-16 h-16">
-              <div className="absolute inset-0 rounded-full border-2 border-purple-500/20" />
-              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-purple-500 animate-spin" />
-              <div className="absolute inset-2 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
+              <div className="absolute inset-0 rounded-full border-2 border-tech-blue/20" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-tech-blue animate-spin" />
             </div>
-            <p className="text-sm text-gray-500 animate-pulse">
-              Generating your content...
-            </p>
+            <p className="text-sm text-steel animate-pulse">Generating your content...</p>
           </div>
         )}
 
-        {/* Results */}
         <ResultDisplay result={result} resultType={tool.resultType} />
       </div>
     </div>

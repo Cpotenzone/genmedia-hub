@@ -12,36 +12,26 @@ import ToolPanel from "./ToolPanel";
 function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose }) {
   return (
     <>
-      {/* Mobile Overlay */}
       {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={onClose} />
       )}
 
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-[#0c0c14]/95 backdrop-blur-xl
-                    border-r border-white/[0.06] flex flex-col
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-navy flex flex-col
                     transform transition-transform duration-300 lg:transform-none
                     ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
-        {/* Sidebar Header */}
-        <div className="p-5 border-b border-white/[0.06]">
+        <div className="p-5 border-b border-white/10">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+            <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
               MCP Servers
             </h2>
-            <button
-              onClick={onClose}
-              className="p-1 rounded-lg hover:bg-white/5 text-gray-500 lg:hidden"
-            >
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10 text-white/60 lg:hidden">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Server List */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {servers.map((server) => {
             const Icon = server.icon;
@@ -49,51 +39,31 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose }) {
             return (
               <button
                 key={server.id}
-                onClick={() => {
-                  onSelectServer(server);
-                  onClose();
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-200
-                  ${
-                    isActive
-                      ? "bg-white/[0.06] border border-white/[0.08]"
-                      : "hover:bg-white/[0.03] border border-transparent"
-                  }`}
+                onClick={() => { onSelectServer(server); onClose(); }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200
+                  ${isActive ? "bg-tech-blue/20 border border-tech-blue/30" : "hover:bg-white/5 border border-transparent"}`}
               >
-                <div
-                  className={`w-9 h-9 rounded-lg bg-gradient-to-br ${server.color} flex items-center justify-center flex-shrink-0 ${
-                    isActive ? "shadow-lg" : "opacity-70"
-                  }`}
-                >
+                <div className={`w-9 h-9 rounded-lg bg-tech-blue/20 flex items-center justify-center flex-shrink-0`}>
                   <Icon className="w-4.5 h-4.5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-sm font-medium truncate ${
-                      isActive ? "text-white" : "text-gray-400"
-                    }`}
-                  >
+                  <p className={`text-sm font-medium truncate ${isActive ? "text-white" : "text-white/70"}`}>
                     {server.name}
                   </p>
-                  <p className="text-xs text-gray-600 truncate">
+                  <p className="text-xs text-white/40 truncate">
                     {server.tools.length} tool{server.tools.length !== 1 && "s"}
                   </p>
                 </div>
-                {isActive && (
-                  <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                )}
+                {isActive && <ChevronRight className="w-4 h-4 text-tech-blue flex-shrink-0" />}
               </button>
             );
           })}
         </nav>
 
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t border-white/[0.06]">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
-            <Sparkles className="w-4 h-4 text-purple-400" />
-            <span className="text-xs text-purple-300">
-              All servers operational
-            </span>
+        <div className="p-4 border-t border-white/10">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-success/10 border border-success/20">
+            <Sparkles className="w-4 h-4 text-success" />
+            <span className="text-xs text-success">All servers operational</span>
           </div>
         </div>
       </aside>
@@ -106,54 +76,42 @@ function ServerView({ server, onSelectTool }) {
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl">
-      {/* Server Header */}
       <div className="flex items-start gap-4 mb-8">
-        <div
-          className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${server.color} flex items-center justify-center shadow-xl`}
-        >
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-navy to-tech-blue flex items-center justify-center shadow-lg">
           <Icon className="w-7 h-7 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-white">{server.name}</h1>
-          <p className="text-sm text-gray-400 mt-1 max-w-lg">
-            {server.description}
-          </p>
+          <h1 className="text-2xl font-bold text-navy">{server.name}</h1>
+          <p className="text-sm text-steel mt-1 max-w-lg">{server.description}</p>
         </div>
       </div>
 
-      {/* Tools Grid */}
-      <div className="mb-6">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-          Available Tools
-        </h2>
-      </div>
+      <h2 className="text-sm font-semibold text-steel uppercase tracking-wider mb-4">
+        Available Tools
+      </h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {server.tools.map((tool) => (
           <button
             key={tool.id}
             onClick={() => onSelectTool(tool)}
-            className="group text-left p-5 rounded-xl bg-white/[0.02] border border-white/[0.06]
-                       hover:bg-white/[0.04] hover:border-white/[0.12]
-                       transition-all duration-200 hover:-translate-y-0.5"
+            className="group text-left p-5 rounded-xl bg-white border border-gray-200
+                       hover:border-tech-blue/30 hover:shadow-md
+                       transition-all duration-200"
           >
             <div className="flex items-start justify-between mb-3">
-              <div className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/[0.08] flex items-center justify-center group-hover:border-purple-500/30 transition-colors">
-                <Wrench className="w-4 h-4 text-gray-400 group-hover:text-purple-400 transition-colors" />
+              <div className="w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center group-hover:border-tech-blue/30 group-hover:bg-tech-blue/5 transition-colors">
+                <Wrench className="w-4 h-4 text-steel group-hover:text-tech-blue transition-colors" />
               </div>
-              <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+              <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-tech-blue transition-colors" />
             </div>
-            <h3 className="text-sm font-semibold text-white mb-1.5">
-              {tool.name}
-            </h3>
-            <p className="text-xs text-gray-500 leading-relaxed">
-              {tool.description}
-            </p>
+            <h3 className="text-sm font-bold text-navy mb-1.5">{tool.name}</h3>
+            <p className="text-xs text-steel leading-relaxed">{tool.description}</p>
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/[0.04] text-gray-600 border border-white/[0.06]">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-50 text-steel border border-gray-100">
                 {tool.parameters.length} params
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-tech-blue/10 text-tech-blue border border-tech-blue/20">
                 {tool.resultType}
               </span>
             </div>
@@ -174,37 +132,22 @@ export default function Dashboard({ user }) {
       <Sidebar
         servers={mcpServers}
         activeServer={activeServer}
-        onSelectServer={(server) => {
-          setActiveServer(server);
-          setActiveTool(null);
-        }}
+        onSelectServer={(server) => { setActiveServer(server); setActiveTool(null); }}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto bg-[#0a0a0f]">
-        {/* Mobile menu button */}
-        <div className="lg:hidden p-4 border-b border-white/[0.06]">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-lg hover:bg-white/5 text-gray-400"
-          >
+      <main className="flex-1 overflow-y-auto bg-gray-50">
+        <div className="lg:hidden p-4 border-b border-gray-200 bg-white">
+          <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-gray-100 text-steel">
             <Menu className="w-5 h-5" />
           </button>
         </div>
 
         {activeTool ? (
-          <ToolPanel
-            tool={activeTool}
-            server={activeServer}
-            onClose={() => setActiveTool(null)}
-          />
+          <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />
         ) : (
-          <ServerView
-            server={activeServer}
-            onSelectTool={setActiveTool}
-          />
+          <ServerView server={activeServer} onSelectTool={setActiveTool} />
         )}
       </main>
     </div>
