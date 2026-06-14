@@ -17,11 +17,24 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { GoogleAuth } from 'google-auth-library';
 
 // Initialize Firebase Admin SDK
 const app = initializeApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
+const googleAuth = new GoogleAuth();
+
+// ─── Server ID Aliases (frontend → backend normalization) ────────────────────
+const SERVER_ALIASES = {
+  'genmedia-veo': 'mcp-veo',
+  'genmedia-nanobanana': 'mcp-nanobanana',
+  'genmedia-lyria': 'mcp-lyria',
+  'genmedia-chirp3': 'mcp-chirp3',
+  'genmedia-gemini': 'mcp-gemini',
+  'genmedia-avtool': 'mcp-avtool',
+  'gstack-mcp': 'gstack-mcp',
+};
 
 // ─── Cloud Run MCP Server Registry ──────────────────────────────────────────
 // Maps server names to their Cloud Run URLs
@@ -54,14 +67,18 @@ const LOCAL_ONLY_SERVERS = {
   'mcp-gemini': 'gemini not available via cloud',
 };
 
+// ─── Helper: Get Identity Token for Cloud Run ────────────────────────────────
+
+async function getIdentityToken(targetUrl) {
+  const client = await googleAuth.getIdTokenClient(targetUrl);
+  const headers = await client.getRequestHeaders();
+  return headers.Authorization;
+}
+
 // ─── Helper: Verify Authorization Header ─────────────────────────────────────
 
 /**
  * Extract and verify the Firebase ID token from the Authorization header.
- * 
- * @param {object} req - The HTTP request object
- * @returns {Promise<object>} Decoded token with user info
- * @throws {Error} If token is missing or invalid
  */
 async function verifyAuthToken(req) {
   const authHeader = req.headers.authorization;
@@ -88,11 +105,6 @@ async function verifyAuthToken(req) {
 
 /**
  * Forward an MCP tool call to the appropriate Cloud Run service.
- * 
- * @param {string} serverUrl - Base URL of the Cloud Run service
- * @param {string} tool - Tool name to invoke
- * @param {object} params - Parameters for the tool
- * @returns {Promise<object>} The response from the MCP server
  */
 async function forwardToCloudRun(serverUrl, tool, params) {
   // MCP servers expect JSON-RPC style requests
@@ -106,11 +118,15 @@ async function forwardToCloudRun(serverUrl, tool, params) {
     id: Date.now().toString(),
   };
 
-  const response = await fetch(`${serverUrl}/mcp`, {
+  const fullUrl = `${serverUrl}/mcp`;
+  const authHeader = await getIdentityToken(fullUrl);
+
+  const response = await fetch(fullUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'Authorization': authHeader,
     },
     body: JSON.stringify(mcpRequest),
   });
@@ -137,9 +153,6 @@ async function forwardToCloudRun(serverUrl, tool, params) {
 
 // ─── Helper: Log Generation to Firestore ─────────────────────────────────────
 
-/**
- * Log the MCP tool call to Firestore for usage tracking.
- */
 async function logGeneration(userId, server, tool, status, duration) {
   try {
     await db.collection('generations').add({
@@ -151,41 +164,21 @@ async function logGeneration(userId, server, tool, status, duration) {
       createdAt: FieldValue.serverTimestamp(),
     });
   } catch (err) {
-    // Non-critical: don't fail the request if logging fails
     console.warn('Failed to log generation:', err.message);
   }
 }
 
 // ─── Main Cloud Function: MCP Proxy ─────────────────────────────────────────
 
-/**
- * Authenticated proxy to Cloud Run MCP endpoints.
- * 
- * Request body:
- *   {
- *     "server": "mcp-veo",       // Required: MCP server name
- *     "tool": "generate_video",   // Required: Tool name to invoke
- *     "params": { ... }           // Optional: Parameters for the tool
- *   }
- * 
- * Response:
- *   200: { result: <tool_response> }
- *   400: { error: "..." } — Bad request (missing fields, unknown server)
- *   401: { error: "..." } — Authentication failed
- *   502: { error: "..." } — MCP server error
- *   500: { error: "..." } — Internal error
- */
 export const mcpProxy = onRequest(
   {
-    // Function configuration
     region: 'us-central1',
     memory: '256MiB',
     timeoutSeconds: 120,
     maxInstances: 50,
-    cors: true, // Allow CORS for Firebase Hosting
+    cors: true,
   },
   async (req, res) => {
-    // ── Only accept POST requests ──
     if (req.method !== 'POST') {
       res.status(405).json({
         error: 'Method not allowed. Use POST.',
@@ -202,8 +195,24 @@ export const mcpProxy = onRequest(
       const decodedToken = await verifyAuthToken(req);
       userId = decodedToken.uid;
 
-      // ── Step 2: Validate Request Body ──
-      const { server, tool, params = {} } = req.body;
+      // ── Step 2: Extract server, tool, params ──
+      // Support both formats:
+      // Format A: POST /api/mcp with body {server, tool, params}
+      // Format B: POST /api/mcp/{server}/{tool} with body as params
+      let { server, tool, params = {} } = req.body;
+
+      if (!server || !tool) {
+        // Try to extract from URL path
+        const pathParts = req.path.split('/').filter(Boolean);
+        if (pathParts.length >= 2) {
+          server = pathParts[pathParts.length - 2];
+          tool = pathParts[pathParts.length - 1];
+          params = req.body; // entire body is params
+        }
+      }
+
+      // Normalize server IDs (frontend uses genmedia-X, backend uses mcp-X)
+      server = SERVER_ALIASES[server] || server;
 
       if (!server || typeof server !== 'string') {
         res.status(400).json({
@@ -268,7 +277,6 @@ export const mcpProxy = onRequest(
       const duration = Date.now() - startTime;
       const statusCode = error.statusCode || 500;
 
-      // Log failure if we have a user context
       if (userId) {
         await logGeneration(userId, req.body?.server, req.body?.tool, 'failed', duration);
       }
@@ -286,10 +294,6 @@ export const mcpProxy = onRequest(
 
 // ─── Health Check Endpoint ───────────────────────────────────────────────────
 
-/**
- * Simple health check — returns available servers and status.
- * No authentication required (useful for monitoring).
- */
 export const health = onRequest(
   {
     region: 'us-central1',
