@@ -377,6 +377,11 @@ body {
   color: var(--steel);
   line-height: 1.6;
   margin: 0 0 1.1rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .card-id {
   font-size: 0.7rem;
@@ -392,10 +397,157 @@ body {
 .card-meta {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--tech-blue);
+}
+.card-toolcount {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--tech-blue);
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+}
+
+/* ---------- Featured server card (gstack-mcp) ---------- */
+.featured-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 1.5rem;
+  max-width: var(--maxw);
+  margin: 0 auto 1.5rem;
+  padding: 2rem;
+  border-radius: 20px;
+  text-decoration: none;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(640px 320px at 88% -30%, rgba(116, 62, 228, 0.6), transparent 60%),
+    linear-gradient(135deg, var(--navy) 0%, var(--navy-deep) 55%, #271a6b 100%);
+  box-shadow: var(--shadow-md);
+  transition: transform 0.3s var(--ease-spring), box-shadow 0.3s var(--ease-out);
+}
+.featured-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 70% 100% at 90% 0%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 70% 100% at 90% 0%, #000 30%, transparent 75%);
+  pointer-events: none;
+}
+.featured-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 28px 56px -18px rgba(116, 62, 228, 0.6), var(--shadow-md);
+}
+.featured-card-main { position: relative; z-index: 1; flex: 1; min-width: 0; }
+.featured-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(135deg, var(--tech-blue), var(--indigo));
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  margin-bottom: 1.1rem;
+}
+.featured-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+.featured-icon {
+  flex-shrink: 0;
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--tech-blue), var(--indigo));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 8px 20px -6px rgba(116, 62, 228, 0.7);
+  transition: transform 0.3s var(--ease-spring);
+}
+.featured-card:hover .featured-icon { transform: scale(1.08) rotate(-4deg); }
+.featured-head h3 {
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: #fff;
+  margin: 0 0 0.25rem;
+}
+.featured-head .card-id {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.8);
+}
+.featured-card-main > p {
+  font-size: 0.98rem;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.6;
+  margin: 0 0 1.25rem;
+  max-width: 640px;
+}
+.featured-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  transition: gap 0.3s var(--ease-out), color 0.3s var(--ease-out);
+}
+.featured-card:hover .featured-link { gap: 0.75rem; color: #fff; }
+.featured-stat {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 150px;
+  padding: 1.5rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.featured-stat-num {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  background: linear-gradient(135deg, #fff, #c4b5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.featured-stat-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 0.5rem;
+}
+@media (max-width: 640px) {
+  .featured-card { flex-direction: column; padding: 1.5rem; }
+  .featured-stat { min-width: 0; }
 }
 
 /* ============================================================

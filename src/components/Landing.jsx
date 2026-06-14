@@ -1,14 +1,9 @@
 import React from "react";
 import {
   ArrowRight,
+  ArrowDown,
   Sparkles,
   Layers,
-  Video,
-  Image as ImageIcon,
-  Music,
-  Mic,
-  AudioLines,
-  Film,
   Brain,
   Lightbulb,
   Crown,
@@ -25,6 +20,7 @@ import {
   Github,
   ExternalLink,
 } from "lucide-react";
+import { mcpServers } from "../lib/mcpServers";
 import { useInView, useCountUp } from "../lib/hooks";
 
 /* ---------- Reveal wrapper ---------- */
@@ -38,15 +34,13 @@ function Reveal({ children, className = "", stagger = false, as: Tag = "div", st
   );
 }
 
-/* ---------- Data ---------- */
-const servers = [
-  { id: "genmedia-veo", name: "Video Generation", icon: Video, desc: "Cinematic video from text or images with Veo 3.1. Native audio, multiple aspect ratios, and reference-guided styles.", meta: "6 tools · Veo 3.1" },
-  { id: "genmedia-nanobanana", name: "Image Generation", icon: ImageIcon, desc: "Generate and edit images with Nano Banana. 13 aspect ratios, multi-image compositing, and precise style control.", meta: "1 tool · Gemini 3" },
-  { id: "genmedia-lyria", name: "Music Composition", icon: Music, desc: "Compose original tracks with Lyria. Specify genre, mood, instruments, tempo, and duration.", meta: "1 tool · Lyria" },
-  { id: "genmedia-chirp3", name: "Voice / TTS", icon: Mic, desc: "Premium voiceovers with Chirp3 HD. 30+ HD voices, custom IPA pronunciation, expressive control.", meta: "2 tools · Chirp3 HD" },
-  { id: "genmedia-gemini", name: "Expressive Speech", icon: AudioLines, desc: "Gemini-native TTS — prompt HOW the speech should sound: tone, accent, emotion, and pacing.", meta: "3 tools · Gemini TTS" },
-  { id: "genmedia-avtool", name: "AV Compositing", icon: Film, desc: "The glue layer. Combine Veo video with Lyria music and voiceover into final deliverables via ffmpeg.", meta: "9 tools · ffmpeg" },
-];
+/* ---------- Data ----------
+   All 7 servers are sourced dynamically from src/lib/mcpServers.js so the
+   landing grid always stays in sync with the dashboard. */
+const featuredServer = mcpServers.find((s) => s.featured) || mcpServers[0];
+const FeaturedIcon = featuredServer.icon;
+const otherServers = mcpServers.filter((s) => s !== featuredServer);
+const toolCount = (s) => `${s.tools.length} ${s.tools.length === 1 ? "tool" : "tools"}`;
 
 const agents = [
   { icon: Lightbulb, role: "Product Advisor", name: "Office Hours", tagline: "YC-style forcing questions that expose real demand and the narrowest wedge." },
@@ -132,7 +126,7 @@ export default function Landing({ onSignIn }) {
         </Reveal>
       </section>
 
-      {/* Servers */}
+      {/* Servers — all 7, sourced dynamically from mcpServers.js */}
       <section className="section section-alt" id="servers">
         <Reveal className="section-head">
           <span className="eyebrow">The Platform</span>
@@ -142,8 +136,34 @@ export default function Landing({ onSignIn }) {
             specialized AI capabilities through a unified, secure API.
           </p>
         </Reveal>
+
+        {/* Featured: gstack-mcp */}
+        <Reveal>
+          <a href="#agents" className="featured-card">
+            <div className="featured-card-main">
+              <span className="featured-badge"><Sparkles size={13} /> Featured</span>
+              <div className="featured-head">
+                <div className="featured-icon"><FeaturedIcon size={26} /></div>
+                <div>
+                  <h3>{featuredServer.name}</h3>
+                  <span className="card-id">{featuredServer.id}</span>
+                </div>
+              </div>
+              <p>{featuredServer.description}</p>
+              <span className="featured-link">
+                Meet all {featuredServer.tools.length} agents <ArrowDown size={15} />
+              </span>
+            </div>
+            <div className="featured-stat">
+              <span className="featured-stat-num">{featuredServer.tools.length}</span>
+              <span className="featured-stat-label">Expert Agents</span>
+            </div>
+          </a>
+        </Reveal>
+
+        {/* The other 6 servers */}
         <Reveal className="cards-grid reveal-stagger" stagger>
-          {servers.map((s, i) => {
+          {otherServers.map((s, i) => {
             const Icon = s.icon;
             return (
               <div key={s.id} className="server-card" style={{ animationDelay: `${i * 70}ms` }}>
@@ -151,9 +171,10 @@ export default function Landing({ onSignIn }) {
                   <Icon size={22} />
                 </div>
                 <h3>{s.name}</h3>
-                <p>{s.desc}</p>
+                <p>{s.description}</p>
                 <div className="card-meta">
                   <span className="card-id">{s.id}</span>
+                  <span className="card-toolcount">{toolCount(s)}</span>
                 </div>
               </div>
             );
