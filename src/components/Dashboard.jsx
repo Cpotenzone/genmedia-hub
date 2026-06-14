@@ -5,9 +5,12 @@ import {
   X,
   Wrench,
   Sparkles,
+  Terminal,
+  FolderDown,
 } from "lucide-react";
 import { mcpServers } from "../lib/mcpServers";
 import ToolPanel from "./ToolPanel";
+import ExportConfig from "./ExportConfig";
 
 /* Shimmer skeleton shown while a server's tools "load" */
 function ToolGridSkeleton() {
@@ -42,7 +45,7 @@ function ToolGridSkeleton() {
   );
 }
 
-function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose }) {
+function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport }) {
   return (
     <>
       {isOpen && (
@@ -93,7 +96,17 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose }) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-white/10">
+        <div className="p-3 border-t border-white/10 space-y-2">
+          <button
+            onClick={onExport}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left
+                       bg-white/5 border border-white/10 text-white/80
+                       hover:bg-white/10 hover:border-tech-blue/40 hover:text-white
+                       transition-all duration-300"
+          >
+            <FolderDown className="w-4 h-4 text-tech-blue" />
+            <span className="text-sm font-medium">Export MCP Config</span>
+          </button>
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-success/10 border border-success/20">
             <Sparkles className="w-4 h-4 text-success" />
             <span className="text-xs text-success">All servers operational</span>
@@ -104,26 +117,37 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose }) {
   );
 }
 
-function ServerView({ server, onSelectTool }) {
+function ServerView({ server, onSelectTool, onExport }) {
   const Icon = server.icon;
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl view-fade-up">
-      <div className="flex items-start gap-4 mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-navy to-indigo flex items-center justify-center shadow-lg shadow-indigo/20">
-          <Icon className="w-7 h-7 text-white" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-2xl font-bold text-navy tracking-tight">{server.name}</h1>
-            {server.featured && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white bg-gradient-to-r from-tech-blue to-indigo">
-                <Sparkles className="w-3 h-3" /> Featured
-              </span>
-            )}
+      <div className="flex items-start justify-between gap-4 mb-8">
+        <div className="flex items-start gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-navy to-indigo flex items-center justify-center shadow-lg shadow-indigo/20 flex-shrink-0">
+            <Icon className="w-7 h-7 text-white" />
           </div>
-          <p className="text-sm text-steel mt-1.5 max-w-lg leading-relaxed">{server.description}</p>
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-2xl font-bold text-navy tracking-tight">{server.name}</h1>
+              {server.featured && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white bg-gradient-to-r from-tech-blue to-indigo">
+                  <Sparkles className="w-3 h-3" /> Featured
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-steel mt-1.5 max-w-lg leading-relaxed">{server.description}</p>
+          </div>
         </div>
+        <button
+          onClick={() => onExport(server.id)}
+          className="hidden sm:flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-navy
+                     bg-white border border-gray-200 rounded-lg flex-shrink-0
+                     hover:border-tech-blue/40 hover:bg-gray-50 hover:-translate-y-0.5
+                     transition-all duration-300"
+        >
+          <Terminal className="w-4 h-4 text-tech-blue" /> Export
+        </button>
       </div>
 
       <h2 className="text-xs font-semibold text-steel uppercase tracking-[0.1em] mb-4">
@@ -172,6 +196,13 @@ export default function Dashboard({ user }) {
   const [activeTool, setActiveTool] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportServerId, setExportServerId] = useState(null);
+
+  const openExport = (serverId = null) => {
+    setExportServerId(serverId);
+    setExportOpen(true);
+  };
 
   // Brief shimmer when the dashboard mounts and on each server switch —
   // gives the perceived-performance polish of a real data fetch.
@@ -189,6 +220,7 @@ export default function Dashboard({ user }) {
         onSelectServer={(server) => { setActiveServer(server); setActiveTool(null); }}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        onExport={() => { openExport(null); setSidebarOpen(false); }}
       />
 
       <main className="flex-1 overflow-y-auto bg-gray-50">
@@ -208,9 +240,15 @@ export default function Dashboard({ user }) {
         ) : loading ? (
           <ToolGridSkeleton />
         ) : (
-          <ServerView key={activeServer.id} server={activeServer} onSelectTool={setActiveTool} />
+          <ServerView key={activeServer.id} server={activeServer} onSelectTool={setActiveTool} onExport={openExport} />
         )}
       </main>
+
+      <ExportConfig
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        initialServerId={exportServerId}
+      />
     </div>
   );
 }

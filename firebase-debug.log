@@ -1,0 +1,23 @@
+[debug] [2026-06-14T17:57:04.764Z] ----------------------------------------------------------------------
+[debug] [2026-06-14T17:57:04.765Z] Command:       /Users/caseypotenzone/.nvm/versions/node/v24.14.1/bin/node /Users/caseypotenzone/.nvm/versions/node/v24.14.1/bin/firebase deploy --only hosting --project casey-genmedia
+[debug] [2026-06-14T17:57:04.765Z] CLI Version:   15.20.0
+[debug] [2026-06-14T17:57:04.765Z] Platform:      darwin
+[debug] [2026-06-14T17:57:04.765Z] Node Version:  v24.14.1
+[debug] [2026-06-14T17:57:04.765Z] Time:          Sun Jun 14 2026 10:57:04 GMT-0700 (Pacific Daylight Time)
+[debug] [2026-06-14T17:57:04.765Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-06-14T17:57:05.462Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-06-14T17:57:05.936Z] Running auto auth
+[debug] [2026-06-14T17:57:05.936Z] [iam] checking project casey-genmedia for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-06-14T17:57:05.937Z] No OAuth tokens found
+[debug] [2026-06-14T17:57:05.937Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/casey-genmedia:testIamPermissions [none]
+[debug] [2026-06-14T17:57:05.937Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/casey-genmedia:testIamPermissions  x-goog-user-project=casey-genmedia
+[debug] [2026-06-14T17:57:05.937Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/casey-genmedia:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-06-14T17:57:06.352Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/casey-genmedia:testIamPermissions 200
+[debug] [2026-06-14T17:57:06.352Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/casey-genmedia:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-06-14T17:57:06.353Z] No OAuth tokens found
+[debug] [2026-06-14T17:57:06.353Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/casey-genmedia [none]
+[debug] [2026-06-14T18:14:14.093Z] *** [apiv2] error from fetch(https://firebase.googleapis.com/v1beta1/projects/casey-genmedia, {"headers":{},"method":"GET","signal":{"reason":""}}): AbortError: The user aborted a request.
+[debug] [2026-06-14T18:14:14.093Z] Timeout reached making request to https://firebase.googleapis.com/v1beta1/projects/casey-genmedia (original: The user aborted a request.)
+[error] 
+[error] Error: Assertion failed: resolving hosting target of a site with no site name or target name. This should have caused an error earlier

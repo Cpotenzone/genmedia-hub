@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ArrowRight,
   ArrowDown,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { mcpServers } from "../lib/mcpServers";
 import { useInView, useCountUp } from "../lib/hooks";
+import ExportConfig from "./ExportConfig";
 
 /* ---------- Reveal wrapper ---------- */
 function Reveal({ children, className = "", stagger = false, as: Tag = "div", style }) {
@@ -90,6 +91,7 @@ function StatsRow() {
 }
 
 export default function Landing({ onSignIn }) {
+  const [exportOpen, setExportOpen] = useState(false);
   return (
     <div className="view-fade">
       {/* Hero */}
@@ -248,6 +250,24 @@ export default function Landing({ onSignIn }) {
         </Reveal>
       </section>
 
+      {/* Install Locally */}
+      <section className="section section-alt" id="install">
+        <Reveal className="install-band">
+          <div className="install-copy">
+            <span className="eyebrow">Bring it to your machine</span>
+            <h2 className="section-title">Install locally in one click</h2>
+            <p className="section-subtitle" style={{ margin: "0.5rem 0 0" }}>
+              Export the standard MCP config for Claude Desktop, Kiro, or
+              Antigravity (Gemini) — copy the JSON or download the file, drop it
+              in, and you're running all 7 servers locally.
+            </p>
+          </div>
+          <button className="btn btn-gradient" onClick={() => setExportOpen(true)}>
+            <Terminal size={18} /> Export MCP Config
+          </button>
+        </Reveal>
+      </section>
+
       {/* CTA */}
       <section className="cta">
         <Reveal className="cta-inner">
@@ -317,6 +337,8 @@ export default function Landing({ onSignIn }) {
           </div>
         </div>
       </footer>
+
+      <ExportConfig open={exportOpen} onClose={() => setExportOpen(false)} />
     </div>
   );
 }
