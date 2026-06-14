@@ -39,9 +39,37 @@ const firebaseConfig = {
   appId: "1:128509221012:web:5bd73a95aea4b7a2837c81",
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+} catch (e) {
+  console.error("Firebase init failed:", e);
+}
+
+export const auth = app ? getAuth(app) : null;
+
+let _db = null;
+export function getDb() {
+  if (!_db && app) {
+    try {
+      _db = getFirestore(app);
+    } catch (e) {
+      console.warn("Firestore not available:", e?.code || e);
+    }
+  }
+  return _db;
+}
+// Legacy export for backward compat — lazy getter
+export const db = new Proxy({}, {
+  get(_, prop) {
+    const real = getDb();
+    if (!real) {
+      console.warn("Firestore accessed but not available");
+      return undefined;
+    }
+    return real[prop];
+  }
+});
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("email");
@@ -49,9 +77,11 @@ googleProvider.addScope("profile");
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
 // Keep users signed in across reloads/tabs. Best-effort (private mode can reject).
-setPersistence(auth, browserLocalPersistence).catch((e) =>
-  console.warn("Auth persistence unavailable:", e?.code || e)
-);
+if (auth) {
+  setPersistence(auth, browserLocalPersistence).catch((e) =>
+    console.warn("Auth persistence unavailable:", e?.code || e)
+  );
+}
 
 /* ─── Domain restriction ─────────────────────────────────────────── */
 export const ALLOWED_DOMAINS = ["criticalasset.com", "insuremep.com"];
@@ -196,7 +226,9 @@ export function getUserProfile(user) {
 /* ─── Firestore ──────────────────────────────────────────────────── */
 async function ensureUserDocument(user) {
   try {
-    const ref = doc(db, "users", user.uid);
+    const firestore = getDb();
+    if (!firestore) return;
+    const ref = doc(firestore, "users", user.uid);
     await setDoc(
       ref,
       {
@@ -219,8 +251,10 @@ async function ensureUserDocument(user) {
 export async function fetchGenerations(uid, max = 25) {
   if (!uid) return [];
   try {
+    const firestore = getDb();
+    if (!firestore) return [];
     const q = query(
-      collection(db, "generations"),
+      collection(firestore, "generations"),
       where("userId", "==", uid),
       orderBy("createdAt", "desc"),
       fbLimit(max)
