@@ -281,7 +281,13 @@ export const mcpProxy = onRequest(
       // ── Step 5: Forward to Cloud Run ──
       console.log(`[mcpProxy] uid=${userId} server=${server} tool=${tool}`);
 
-      const result = await forwardToCloudRun(serverConfig.url, tool, params);
+      // Filter out empty string values to avoid confusing MCP servers
+      const cleanParams = {};
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== "" && v !== null && v !== undefined) cleanParams[k] = v;
+      }
+
+      const result = await forwardToCloudRun(serverConfig.url, tool, cleanParams);
       const duration = Date.now() - startTime;
 
       // ── Step 6: Log Success ──

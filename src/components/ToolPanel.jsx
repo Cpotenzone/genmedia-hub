@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Play,
   Loader2,
@@ -148,6 +148,35 @@ function ResultDisplay({ result, resultType }) {
   }
 }
 
+function ThinkingUI({ server, tool }) {
+  const [steps, setSteps] = useState([]);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setSteps((s) => [...s, { text: `Connecting to ${server.id}...`, status: "pending" }]), 0),
+      setTimeout(() => setSteps((s) => s.map((st, i) => i === 0 ? { ...st, status: "done" } : st).concat({ text: "Session established ✓", status: "done" })), 1000),
+      setTimeout(() => setSteps((s) => [...s, { text: `Sending prompt to ${tool.parameters.find(p => p.name === "model")?.default || tool.name}...`, status: "pending" }]), 2000),
+      setTimeout(() => setSteps((s) => s.map((st, i) => i === s.length - 1 ? { ...st, status: "done" } : st).concat({ text: "Generating...", status: "active" })), 4000),
+    ];
+    const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
+    return () => { timers.forEach(clearTimeout); clearInterval(interval); };
+  }, []);
+
+  return (
+    <div className="mt-6 rounded-xl overflow-hidden border border-gray-700 bg-[#1E293B] p-4 font-mono text-xs leading-6">
+      {steps.map((step, i) => (
+        <div key={i} className={step.status === "done" ? "text-green-400" : step.status === "active" ? "text-yellow-300" : "text-gray-400"}>
+          {step.status === "active" && <span className="inline-block w-2 h-2 rounded-full bg-yellow-300 animate-pulse mr-2" />}
+          {step.text}
+        </div>
+      ))}
+      <div className="mt-2 text-gray-500">{elapsed}s elapsed<span className="animate-pulse">▋</span></div>
+    </div>
+  );
+}
+
 export default function ToolPanel({ tool, server, onClose }) {
   const [formData, setFormData] = useState(() => {
     const defaults = {};
@@ -172,18 +201,29 @@ export default function ToolPanel({ tool, server, onClose }) {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Not authenticated");
 
+      // Filter out empty optional fields so MCP server doesn't get confused
+      const requiredFields = new Set(tool.parameters.filter(p => p.required).map(p => p.name));
+      const cleanParams = {};
+      for (const [key, val] of Object.entries(formData)) {
+        if (val !== "" && val !== null && val !== undefined) {
+          cleanParams[key] = val;
+        } else if (requiredFields.has(key)) {
+          cleanParams[key] = val;
+        }
+      }
+
       const response = await fetch(
         "/api/mcp",
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ server: server.id, tool: tool.id, params: formData }),
+          body: JSON.stringify({ server: server.id, tool: tool.id, params: cleanParams }),
         }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Request failed (${response.status})`);
+        throw new Error(errorData.error || errorData.message || `Request failed (${response.status})`);
       }
 
       const data = await response.json();
@@ -242,15 +282,7 @@ export default function ToolPanel({ tool, server, onClose }) {
           </button>
         </form>
 
-        {loading && (
-          <div className="mt-8 flex flex-col items-center gap-4 py-8">
-            <div className="relative w-16 h-16">
-              <div className="absolute inset-0 rounded-full border-2 border-tech-blue/20" />
-              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-tech-blue animate-spin" />
-            </div>
-            <p className="text-sm text-steel animate-pulse">Generating your content...</p>
-          </div>
-        )}
+        {loading && <ThinkingUI server={server} tool={tool} />}
 
         <ResultDisplay result={result} resultType={tool.resultType} />
       </div>
