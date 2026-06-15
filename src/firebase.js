@@ -86,7 +86,7 @@ async function ensureUserDocument(user) {
 export async function callMcpTool(server, tool, params = {}) {
   const token = await getIdToken();
   if (!token) throw new Error('Not authenticated. Please sign in first.');
-  const response = await fetch('/api/mcpProxy', {
+  const response = await fetch('/api/mcp', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

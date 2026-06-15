@@ -173,7 +173,7 @@ export default function ToolPanel({ tool, server, onClose }) {
       if (!token) throw new Error("Not authenticated");
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL || ""}/api/mcp`,
+        "/api/mcp",
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

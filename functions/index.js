@@ -177,6 +177,7 @@ export const mcpProxy = onRequest(
     timeoutSeconds: 120,
     maxInstances: 50,
     cors: true,
+    invoker: 'public',
   },
   async (req, res) => {
     if (req.method !== 'POST') {
