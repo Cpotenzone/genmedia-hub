@@ -107,28 +107,53 @@ async function verifyAuthToken(req) {
  * Forward an MCP tool call to the appropriate Cloud Run service.
  */
 async function forwardToCloudRun(serverUrl, tool, params) {
-  // MCP servers expect JSON-RPC style requests
-  const mcpRequest = {
-    jsonrpc: '2.0',
-    method: 'tools/call',
-    params: {
-      name: tool,
-      arguments: params,
-    },
-    id: Date.now().toString(),
-  };
-
   const fullUrl = `${serverUrl}/mcp`;
   const authHeader = await getIdentityToken(fullUrl);
 
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Authorization': authHeader,
+  };
+
+  // Step 1: Initialize session (Streamable HTTP transport)
+  const initResponse = await fetch(fullUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'genmedia-hub', version: '1.0' },
+      },
+    }),
+  });
+
+  if (!initResponse.ok) {
+    const errorText = await initResponse.text().catch(() => 'Unknown error');
+    const error = new Error(`MCP init failed (${initResponse.status}): ${errorText}`);
+    error.statusCode = 502;
+    throw error;
+  }
+
+  const sessionId = initResponse.headers.get('mcp-session-id');
+
+  // Step 2: Send tools/call with session ID
+  const callHeaders = { ...headers };
+  if (sessionId) callHeaders['Mcp-Session-Id'] = sessionId;
+
   const response = await fetch(fullUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': authHeader,
-    },
-    body: JSON.stringify(mcpRequest),
+    headers: callHeaders,
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: tool, arguments: params },
+    }),
   });
 
   if (!response.ok) {
@@ -140,7 +165,6 @@ async function forwardToCloudRun(serverUrl, tool, params) {
 
   const data = await response.json();
 
-  // Handle JSON-RPC error responses
   if (data.error) {
     const error = new Error(data.error.message || 'MCP server error');
     error.statusCode = 500;

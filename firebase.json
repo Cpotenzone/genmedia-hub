@@ -8,6 +8,14 @@
     ],
     "rewrites": [
       {
+        "source": "/api/mcp",
+        "function": "mcpProxy"
+      },
+      {
+        "source": "/api/mcp/**",
+        "function": "mcpProxy"
+      },
+      {
         "source": "/api/**",
         "function": "mcpProxy"
       },
