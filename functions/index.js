@@ -197,7 +197,7 @@ async function logGeneration(userId, server, tool, status, duration) {
 export const mcpProxy = onRequest(
   {
     region: 'us-central1',
-    memory: '256MiB',
+    memory: '1GiB',
     timeoutSeconds: 120,
     maxInstances: 50,
     cors: true,

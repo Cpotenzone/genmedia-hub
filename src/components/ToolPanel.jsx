@@ -5,8 +5,6 @@ import {
   X,
   ArrowLeft,
   Download,
-  Copy,
-  Check,
 } from "lucide-react";
 import { auth } from "../lib/firebase";
 
@@ -72,17 +70,7 @@ function FormField({ param, value, onChange }) {
   }
 }
 
-function ResultDisplay({ result, resultType }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    if (result?.text) {
-      navigator.clipboard.writeText(result.text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
+function ResultDisplay({ result }) {
   if (!result) return null;
 
   if (result.error) {
@@ -93,59 +81,68 @@ function ResultDisplay({ result, resultType }) {
     );
   }
 
-  switch (resultType) {
-    case "image":
-      return (
-        <div className="mt-6 space-y-3">
-          <div className="relative rounded-xl overflow-hidden border border-gray-200">
-            <img src={result.url || result.data} alt="Generated" className="w-full h-auto" />
-          </div>
-          {result.url && (
-            <a href={result.url} download className="inline-flex items-center gap-2 px-3 py-1.5 text-xs text-steel hover:text-navy border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
-              <Download className="w-3.5 h-3.5" />
-              Download
-            </a>
-          )}
-        </div>
-      );
+  // Navigate to MCP content blocks
+  const content = result?.result?.content || result?.content || [];
 
-    case "video":
-      return (
-        <div className="mt-6 rounded-xl overflow-hidden border border-gray-200">
-          <video controls className="w-full" src={result.url}>
-            Your browser does not support the video tag.
-          </video>
-        </div>
-      );
-
-    case "audio":
-      return (
-        <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
-          <audio controls className="w-full" src={result.url}>
-            Your browser does not support the audio tag.
-          </audio>
-        </div>
-      );
-
-    case "text":
-      return (
-        <div className="mt-6 relative">
-          <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 max-h-96 overflow-y-auto">
-            <pre className="text-sm text-navy whitespace-pre-wrap font-sans leading-relaxed">{result.text}</pre>
-          </div>
-          <button onClick={handleCopy} className="absolute top-3 right-3 p-1.5 rounded-md bg-white hover:bg-gray-100 border border-gray-200 transition-all">
-            {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5 text-steel" />}
-          </button>
-        </div>
-      );
-
-    default:
-      return (
-        <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
-          <pre className="text-sm text-navy whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
-        </div>
-      );
+  if (!content.length) {
+    return (
+      <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
+        <pre className="text-sm text-navy whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
+      </div>
+    );
   }
+
+  const isError = result?.result?.isError;
+
+  return (
+    <div className="mt-6 space-y-3">
+      {content.map((block, i) => {
+        if (block.type === "image") {
+          const src = `data:${block.mimeType};base64,${block.data}`;
+          return (
+            <div key={i} className="relative rounded-xl overflow-hidden border border-gray-200">
+              <img src={src} alt="Generated" className="w-full h-auto" />
+              <a href={src} download="generated-image.png" className="absolute bottom-3 right-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-black/60 rounded-lg hover:bg-black/80 transition-all">
+                <Download className="w-3.5 h-3.5" />
+                Download
+              </a>
+            </div>
+          );
+        }
+        if (block.type === "text") {
+          if (isError) {
+            return <div key={i} className="p-4 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600 whitespace-pre-wrap">{block.text}</div>;
+          }
+          const text = block.text;
+          const gcsPattern = /(gs:\/\/[^\s]+)/g;
+          if (gcsPattern.test(text)) {
+            const parts = text.split(/(gs:\/\/[^\s]+)/g);
+            return (
+              <div key={i} className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-steel whitespace-pre-wrap">
+                {parts.map((part, j) =>
+                  part.startsWith("gs://") ? (
+                    <a key={j} href={`https://storage.cloud.google.com/${part.slice(5)}`} target="_blank" rel="noopener noreferrer" className="text-tech-blue underline break-all">{part}</a>
+                  ) : (
+                    <span key={j}>{part}</span>
+                  )
+                )}
+              </div>
+            );
+          }
+          return <div key={i} className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-steel whitespace-pre-wrap">{text}</div>;
+        }
+        if (block.type === "resource") {
+          return (
+            <a key={i} href={block.uri || "#"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-3 py-1.5 text-xs text-steel hover:text-navy border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
+              <Download className="w-3.5 h-3.5" />
+              {block.name || "Download Resource"}
+            </a>
+          );
+        }
+        return <pre key={i} className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-xs text-navy whitespace-pre-wrap">{JSON.stringify(block, null, 2)}</pre>;
+      })}
+    </div>
+  );
 }
 
 function ThinkingUI({ server, tool }) {
@@ -284,7 +281,7 @@ export default function ToolPanel({ tool, server, onClose }) {
 
         {loading && <ThinkingUI server={server} tool={tool} />}
 
-        <ResultDisplay result={result} resultType={tool.resultType} />
+        <ResultDisplay result={result} />
       </div>
     </div>
   );
