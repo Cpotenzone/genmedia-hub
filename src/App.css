@@ -360,8 +360,26 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--tech-blue);
-  margin-bottom: 1.1rem;
   transition: transform 0.3s var(--ease-spring);
+}
+.server-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.1rem;
+}
+.server-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 9999px;
+  padding: 0.2rem 0.6rem;
+  letter-spacing: 0.02em;
 }
 .server-card:hover .server-card-icon { transform: scale(1.08) rotate(-3deg); }
 .server-card h3 {

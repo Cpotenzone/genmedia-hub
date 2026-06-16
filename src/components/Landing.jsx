@@ -144,6 +144,7 @@ export default function Landing({ onSignIn }) {
           <a href="#agents" className="featured-card">
             <div className="featured-card-main">
               <span className="featured-badge"><Sparkles size={13} /> Featured</span>
+              <span className="server-live-badge" style={{ marginLeft: "0.5rem" }}>✓ Live</span>
               <div className="featured-head">
                 <div className="featured-icon"><FeaturedIcon size={26} /></div>
                 <div>
@@ -169,8 +170,11 @@ export default function Landing({ onSignIn }) {
             const Icon = s.icon;
             return (
               <div key={s.id} className="server-card" style={{ animationDelay: `${i * 70}ms` }}>
-                <div className="server-card-icon">
-                  <Icon size={22} />
+                <div className="server-card-top">
+                  <div className="server-card-icon">
+                    <Icon size={22} />
+                  </div>
+                  <span className="server-live-badge">✓ Live</span>
                 </div>
                 <h3>{s.name}</h3>
                 <p>{s.description}</p>

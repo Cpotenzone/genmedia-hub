@@ -5,6 +5,9 @@ import {
   X,
   ArrowLeft,
   Download,
+  RotateCcw,
+  Clock,
+  ChevronDown,
 } from "lucide-react";
 import { auth } from "../lib/firebase";
 
@@ -24,7 +27,6 @@ function FormField({ param, value, onChange }) {
           required={param.required}
         />
       );
-
     case "select":
       return (
         <select
@@ -37,7 +39,6 @@ function FormField({ param, value, onChange }) {
           ))}
         </select>
       );
-
     case "range":
       return (
         <div className="flex items-center gap-4">
@@ -55,7 +56,6 @@ function FormField({ param, value, onChange }) {
           </span>
         </div>
       );
-
     default:
       return (
         <input
@@ -70,106 +70,106 @@ function FormField({ param, value, onChange }) {
   }
 }
 
-function ResultDisplay({ result }) {
+function ResultContent({ result }) {
   if (!result) return null;
-
   if (result.error) {
-    return (
-      <div className="mt-6 p-4 rounded-xl bg-red-50 border border-red-200">
-        <p className="text-sm text-red-600">{result.error}</p>
-      </div>
-    );
+    return <p className="text-sm text-red-600">{result.error}</p>;
   }
-
-  // Navigate to MCP content blocks
   const content = result?.result?.content || result?.content || [];
-
-  if (!content.length) {
-    return (
-      <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
-        <pre className="text-sm text-navy whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>
-      </div>
-    );
-  }
-
   const isError = result?.result?.isError;
 
+  if (!content.length) {
+    return <pre className="text-sm text-navy whitespace-pre-wrap">{JSON.stringify(result, null, 2)}</pre>;
+  }
+
   return (
-    <div className="mt-6 space-y-3">
+    <div className="space-y-3">
       {content.map((block, i) => {
         if (block.type === "image") {
           const src = `data:${block.mimeType};base64,${block.data}`;
           return (
-            <div key={i} className="relative rounded-xl overflow-hidden border border-gray-200">
+            <div key={i} className="relative rounded-xl overflow-hidden border border-gray-200 result-image-enter">
               <img src={src} alt="Generated" className="w-full h-auto" />
-              <a href={src} download="generated-image.png" className="absolute bottom-3 right-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-black/60 rounded-lg hover:bg-black/80 transition-all">
-                <Download className="w-3.5 h-3.5" />
-                Download
-              </a>
             </div>
           );
         }
         if (block.type === "text") {
-          if (isError) {
-            return <div key={i} className="p-4 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600 whitespace-pre-wrap">{block.text}</div>;
-          }
-          const text = block.text;
-          const gcsPattern = /(gs:\/\/[^\s]+)/g;
-          if (gcsPattern.test(text)) {
-            const parts = text.split(/(gs:\/\/[^\s]+)/g);
-            return (
-              <div key={i} className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-steel whitespace-pre-wrap">
-                {parts.map((part, j) =>
-                  part.startsWith("gs://") ? (
-                    <a key={j} href={`https://storage.cloud.google.com/${part.slice(5)}`} target="_blank" rel="noopener noreferrer" className="text-tech-blue underline break-all">{part}</a>
-                  ) : (
-                    <span key={j}>{part}</span>
-                  )
-                )}
-              </div>
-            );
-          }
-          return <div key={i} className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-sm text-steel whitespace-pre-wrap">{text}</div>;
+          if (isError) return <div key={i} className="text-sm text-red-600 whitespace-pre-wrap">{block.text}</div>;
+          return <div key={i} className="text-sm text-steel whitespace-pre-wrap leading-relaxed">{block.text}</div>;
         }
         if (block.type === "resource") {
           return (
-            <a key={i} href={block.uri || "#"} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-3 py-1.5 text-xs text-steel hover:text-navy border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
-              <Download className="w-3.5 h-3.5" />
-              {block.name || "Download Resource"}
-            </a>
+            <audio key={i} controls className="w-full rounded-lg" src={block.uri}>
+              Your browser does not support audio.
+            </audio>
           );
         }
-        return <pre key={i} className="p-3 rounded-lg bg-gray-50 border border-gray-200 text-xs text-navy whitespace-pre-wrap">{JSON.stringify(block, null, 2)}</pre>;
+        return <pre key={i} className="text-xs text-navy whitespace-pre-wrap">{JSON.stringify(block, null, 2)}</pre>;
       })}
     </div>
   );
 }
 
-function ThinkingUI({ server, tool }) {
-  const [steps, setSteps] = useState([]);
+function getDownloadData(result) {
+  const content = result?.result?.content || result?.content || [];
+  const img = content.find((b) => b.type === "image");
+  if (img) return { href: `data:${img.mimeType};base64,${img.data}`, name: "generated-image.png" };
+  const res = content.find((b) => b.type === "resource");
+  if (res) return { href: res.uri, name: res.name || "download" };
+  return null;
+}
+
+function ThinkingCard() {
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(Date.now());
-
   useEffect(() => {
-    const timers = [
-      setTimeout(() => setSteps((s) => [...s, { text: `Connecting to ${server.id}...`, status: "pending" }]), 0),
-      setTimeout(() => setSteps((s) => s.map((st, i) => i === 0 ? { ...st, status: "done" } : st).concat({ text: "Session established ✓", status: "done" })), 1000),
-      setTimeout(() => setSteps((s) => [...s, { text: `Sending prompt to ${tool.parameters.find(p => p.name === "model")?.default || tool.name}...`, status: "pending" }]), 2000),
-      setTimeout(() => setSteps((s) => s.map((st, i) => i === s.length - 1 ? { ...st, status: "done" } : st).concat({ text: "Generating...", status: "active" })), 4000),
-    ];
     const interval = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
-    return () => { timers.forEach(clearTimeout); clearInterval(interval); };
+    return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="mt-6 rounded-xl overflow-hidden border border-gray-700 bg-[#1E293B] p-4 font-mono text-xs leading-6">
-      {steps.map((step, i) => (
-        <div key={i} className={step.status === "done" ? "text-green-400" : step.status === "active" ? "text-yellow-300" : "text-gray-400"}>
-          {step.status === "active" && <span className="inline-block w-2 h-2 rounded-full bg-yellow-300 animate-pulse mr-2" />}
-          {step.text}
+    <div className="result-card result-card-featured card-enter">
+      <div className="flex items-center gap-3 p-5">
+        <Loader2 className="w-5 h-5 text-tech-blue animate-spin" />
+        <span className="text-sm font-medium text-navy">Generating...</span>
+        <span className="text-xs text-steel ml-auto font-mono">{elapsed}s</span>
+      </div>
+      <div className="px-5 pb-5">
+        <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-tech-blue to-indigo rounded-full animate-pulse" style={{ width: "60%" }} />
         </div>
-      ))}
-      <div className="mt-2 text-gray-500">{elapsed}s elapsed<span className="animate-pulse">▋</span></div>
+      </div>
+    </div>
+  );
+}
+
+function PromptHistory({ history, onSelect, isOpen, onToggle }) {
+  if (!history.length) return null;
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex items-center gap-2 text-xs text-steel hover:text-navy transition-colors"
+      >
+        <Clock className="w-3.5 h-3.5" />
+        Recent prompts
+        <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute top-7 left-0 right-0 z-20 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+          {history.map((item, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => { onSelect(item); onToggle(); }}
+              className="w-full text-left px-4 py-2.5 text-sm text-steel hover:bg-gray-50 hover:text-navy border-b border-gray-100 last:border-0 transition-colors truncate"
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -177,46 +177,45 @@ function ThinkingUI({ server, tool }) {
 export default function ToolPanel({ tool, server, onClose }) {
   const [formData, setFormData] = useState(() => {
     const defaults = {};
-    tool.parameters.forEach((p) => {
-      if (p.default !== undefined) defaults[p.name] = p.default;
-    });
+    tool.parameters.forEach((p) => { if (p.default !== undefined) defaults[p.name] = p.default; });
     return defaults;
   });
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  const [results, setResults] = useState([]); // gallery of results
+  const [promptHistory, setPromptHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
-  const handleChange = (name, value) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  const handleChange = (name, value) => setFormData((prev) => ({ ...prev, [name]: value }));
+
+  // Get the primary prompt field (first textarea or first required field)
+  const promptField = tool.parameters.find((p) => p.type === "textarea") || tool.parameters.find((p) => p.required) || tool.parameters[0];
 
   const handleExecute = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setResult(null);
+
+    // Save prompt to history
+    const promptVal = formData[promptField?.name];
+    if (promptVal && !promptHistory.includes(promptVal)) {
+      setPromptHistory((prev) => [promptVal, ...prev].slice(0, 10));
+    }
 
     try {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Not authenticated");
 
-      // Filter out empty optional fields so MCP server doesn't get confused
-      const requiredFields = new Set(tool.parameters.filter(p => p.required).map(p => p.name));
+      const requiredFields = new Set(tool.parameters.filter((p) => p.required).map((p) => p.name));
       const cleanParams = {};
       for (const [key, val] of Object.entries(formData)) {
-        if (val !== "" && val !== null && val !== undefined) {
-          cleanParams[key] = val;
-        } else if (requiredFields.has(key)) {
-          cleanParams[key] = val;
-        }
+        if (val !== "" && val !== null && val !== undefined) cleanParams[key] = val;
+        else if (requiredFields.has(key)) cleanParams[key] = val;
       }
 
-      const response = await fetch(
-        "/api/mcp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ server: server.id, tool: tool.id, params: cleanParams }),
-        }
-      );
+      const response = await fetch("/api/mcp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ server: server.id, tool: tool.id, params: cleanParams }),
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -224,16 +223,25 @@ export default function ToolPanel({ tool, server, onClose }) {
       }
 
       const data = await response.json();
-      setResult(data);
+      setResults((prev) => [{ id: Date.now(), prompt: promptVal || JSON.stringify(cleanParams), result: data, timestamp: new Date() }, ...prev]);
     } catch (err) {
-      setResult({ error: err.message });
+      setResults((prev) => [{ id: Date.now(), prompt: promptVal || "", result: { error: err.message }, timestamp: new Date() }, ...prev]);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleRemix = (prompt) => {
+    if (promptField) setFormData((prev) => ({ ...prev, [promptField.name]: prompt }));
+  };
+
+  const handleHistorySelect = (prompt) => {
+    if (promptField) setFormData((prev) => ({ ...prev, [promptField.name]: prompt }));
+  };
+
   return (
     <div className="h-full flex flex-col bg-white">
+      {/* Header */}
       <div className="flex items-center justify-between p-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-steel hover:text-navy transition-all">
@@ -249,39 +257,123 @@ export default function ToolPanel({ tool, server, onClose }) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
-        <p className="text-sm text-steel mb-6">{tool.description}</p>
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Prompt form — always visible */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-steel mb-4">{tool.description}</p>
 
-        <form onSubmit={handleExecute} className="space-y-5">
-          {tool.parameters.map((param) => (
-            <div key={param.name}>
-              <label className="block text-sm font-medium text-navy mb-2">
-                {param.label}
-                {param.required && <span className="text-indigo ml-1">*</span>}
-              </label>
-              <FormField param={param} value={formData[param.name]} onChange={handleChange} />
-            </div>
-          ))}
+          <PromptHistory
+            history={promptHistory}
+            onSelect={handleHistorySelect}
+            isOpen={historyOpen}
+            onToggle={() => setHistoryOpen(!historyOpen)}
+          />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white
-                       bg-navy hover:bg-navy/90
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       rounded-lg transition-all duration-200 shadow-md"
-          >
-            {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" />Processing...</>
-            ) : (
-              <><Play className="w-4 h-4" />Execute</>
+          <form onSubmit={handleExecute} className="space-y-4 mt-3">
+            {tool.parameters.map((param) => (
+              <div key={param.name}>
+                <label className="block text-sm font-medium text-navy mb-1.5">
+                  {param.label}
+                  {param.required && <span className="text-indigo ml-1">*</span>}
+                </label>
+                <FormField param={param} value={formData[param.name]} onChange={handleChange} />
+              </div>
+            ))}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-white
+                         bg-navy rounded-lg shadow-md btn-hover
+                         disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            >
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" />Processing...</> : <><Play className="w-4 h-4" />Execute</>}
+            </button>
+          </form>
+        </div>
+
+        {/* Results gallery */}
+        {(loading || results.length > 0) && (
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold text-steel uppercase tracking-wider">Results</h3>
+
+            {/* Loading card */}
+            {loading && <ThinkingCard />}
+
+            {/* Featured (latest) result */}
+            {results.length > 0 && (
+              <div className="result-card result-card-featured card-enter" key={results[0].id}>
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-steel">
+                      {results[0].timestamp.toLocaleTimeString()}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRemix(results[0].prompt)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-tech-blue bg-tech-blue/10 rounded-lg btn-hover transition-all"
+                      >
+                        <RotateCcw className="w-3 h-3" /> Remix
+                      </button>
+                      {getDownloadData(results[0].result) && (
+                        <a
+                          href={getDownloadData(results[0].result).href}
+                          download={getDownloadData(results[0].result).name}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-navy bg-gray-100 rounded-lg btn-hover transition-all"
+                        >
+                          <Download className="w-3 h-3" /> Download
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-navy/70 mb-3 line-clamp-2 italic">"{results[0].prompt}"</p>
+                  <ResultContent result={results[0].result} />
+                </div>
+              </div>
             )}
-          </button>
-        </form>
 
-        {loading && <ThinkingUI server={server} tool={tool} />}
-
-        <ResultDisplay result={result} />
+            {/* Previous results — 2-col grid */}
+            {results.length > 1 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 results-push-down">
+                {results.slice(1).map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="result-card card-enter"
+                    style={{ animationDelay: `${idx * 60}ms` }}
+                  >
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] text-steel">{item.timestamp.toLocaleTimeString()}</span>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleRemix(item.prompt)}
+                            className="p-1 text-tech-blue hover:bg-tech-blue/10 rounded transition-colors"
+                            title="Remix"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                          {getDownloadData(item.result) && (
+                            <a
+                              href={getDownloadData(item.result).href}
+                              download={getDownloadData(item.result).name}
+                              className="p-1 text-navy hover:bg-gray-100 rounded transition-colors"
+                              title="Download"
+                            >
+                              <Download className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-navy/60 mb-2 line-clamp-1 italic">"{item.prompt}"</p>
+                      <div className="text-xs max-h-40 overflow-hidden">
+                        <ResultContent result={item.result} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

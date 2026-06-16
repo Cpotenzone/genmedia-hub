@@ -132,3 +132,57 @@
     100% { transform: translateX(100%); }
   }
 }
+
+/* ============================================================
+   Result gallery cards & animations
+   ============================================================ */
+@layer components {
+  .result-card {
+    @apply bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  .result-card:hover {
+    @apply shadow-lg;
+    border-color: var(--color-navy-deep);
+  }
+  .result-card-featured {
+    @apply shadow-lg;
+    border-color: var(--color-tech-blue);
+  }
+
+  /* Card entrance animation */
+  .card-enter {
+    animation: card-slide-in 0.3s ease-out forwards;
+  }
+  @keyframes card-slide-in {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Result image scale-in */
+  .result-image-enter {
+    animation: image-scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  @keyframes image-scale-in {
+    from { transform: scale(0.95); opacity: 0.8; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
+  /* Previous results push-down */
+  .results-push-down {
+    animation: push-down 0.3s ease-out;
+  }
+  @keyframes push-down {
+    from { transform: translateY(-10px); opacity: 0.7; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+
+  /* Button hover — lift + shadow */
+  .btn-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .btn-hover:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px -2px rgba(30, 58, 138, 0.25);
+  }
+}

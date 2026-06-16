@@ -90,6 +90,7 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
                     {server.tools.length} tool{server.tools.length !== 1 && "s"}
                   </p>
                 </div>
+                <span className="w-2 h-2 rounded-full bg-success shadow-[0_0_6px_rgba(16,185,129,0.6)] flex-shrink-0" title="Live" />
                 {isActive && <ChevronRight className="w-4 h-4 text-tech-blue flex-shrink-0" />}
               </button>
             );
