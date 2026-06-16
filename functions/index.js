@@ -9,11 +9,14 @@ import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleAuth } from 'google-auth-library';
+import { Storage } from '@google-cloud/storage';
 
 const app = initializeApp({ projectId: 'casey-genmedia' });
 const auth = getAuth(app);
 const db = getFirestore(app);
 const googleAuth = new GoogleAuth();
+const storage = new Storage({ projectId: 'casey-genmedia' });
+const mediaBucket = storage.bucket('casey-genmedia-output');
 
 const SERVER_ALIASES = {
   'genmedia-veo': 'mcp-veo',
@@ -143,6 +146,42 @@ function detectMediaType(result) {
   return 'text';
 }
 
+function getMimeAndExt(mediaType, block) {
+  if (mediaType === 'image') return { mime: block?.mimeType || 'image/png', ext: (block?.mimeType || 'image/png').split('/')[1] || 'png' };
+  if (mediaType === 'audio') return { mime: block?.mimeType || 'audio/wav', ext: (block?.mimeType || 'audio/wav').split('/')[1] || 'wav' };
+  if (mediaType === 'video') return { mime: block?.mimeType || 'video/mp4', ext: (block?.mimeType || 'video/mp4').split('/')[1] || 'mp4' };
+  return { mime: 'application/octet-stream', ext: 'bin' };
+}
+
+async function uploadMediaToGCS(result, userId, generationId) {
+  const content = result?.content || [];
+  const mediaType = detectMediaType(result);
+  if (mediaType === 'text') return null;
+
+  // Find the media block
+  let block = null;
+  let base64Data = null;
+  for (const b of content) {
+    if (b.type === 'image' && b.data) { block = b; base64Data = b.data; break; }
+    if (b.type === 'resource' && b.resource?.blob) { block = b; base64Data = b.resource.blob; break; }
+    if (b.type === 'resource' && b.blob) { block = b; base64Data = b.blob; break; }
+  }
+  if (!base64Data) return null;
+
+  const { mime, ext } = getMimeAndExt(mediaType, block);
+  const gcsPath = `generations/${userId}/${generationId}.${ext}`;
+  const file = mediaBucket.file(gcsPath);
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  await file.save(buffer, { contentType: mime, metadata: { cacheControl: 'public, max-age=31536000' } });
+
+  return {
+    mediaUrl: `gs://casey-genmedia-output/${gcsPath}`,
+    mediaType: mime,
+    mediaSizeBytes: buffer.length,
+  };
+}
+
 // ─── Firestore-triggered Job Processor ───────────────────────────────────────
 
 export const processJob = onDocumentCreated(
@@ -177,15 +216,29 @@ export const processJob = onDocumentCreated(
       // Create generation record
       const promptText = job.params?.description || job.params?.prompt || job.params?.response || Object.values(job.params || {})[0] || '';
       const mediaType = detectMediaType(result);
-      await db.collection('generations').add({
+      const genRef = db.collection('generations').doc();
+      const generationId = genRef.id;
+
+      // Upload media to GCS if binary content exists
+      let mediaInfo = { mediaUrl: null, mediaType: mediaType, mediaSizeBytes: null };
+      try {
+        const uploaded = await uploadMediaToGCS(result, job.userId, generationId);
+        if (uploaded) mediaInfo = uploaded;
+      } catch (uploadErr) {
+        console.error(`[processJob] GCS upload failed for ${jobId}:`, uploadErr.message);
+      }
+
+      await genRef.set({
         userId: job.userId,
         serverId: server,
         toolId: job.toolId,
         prompt: promptText,
         result,
-        mediaType,
-        mediaUrl: null,
+        mediaUrl: mediaInfo.mediaUrl,
+        mediaType: mediaInfo.mediaType,
+        mediaSizeBytes: mediaInfo.mediaSizeBytes,
         createdAt: FieldValue.serverTimestamp(),
+        deletedAt: null,
         sessionId: job.sessionId || null,
         status: 'completed',
         duration: null,
@@ -233,8 +286,14 @@ export const mcpProxy = onRequest(
       if (path.startsWith('/sessions') && req.method === 'DELETE') {
         return await handleDeleteSession(req, res, path);
       }
+      if (path.startsWith('/generations') && req.method === 'DELETE') {
+        return await handleSoftDeleteGeneration(req, res, path);
+      }
       if (path.startsWith('/generations') && req.method === 'GET') {
         return await handleGetGenerations(req, res);
+      }
+      if (path.startsWith('/media/') && req.method === 'GET') {
+        return await handleGetMedia(req, res, path);
       }
       if ((path === '/mcp' || path === '') && req.method === 'POST') {
         return await handleMcpCall(req, res);
@@ -343,7 +402,7 @@ async function handleGetGenerations(req, res) {
   const server = req.query.server;
   const tool = req.query.tool;
 
-  let q = db.collection('generations').where('userId', '==', userId);
+  let q = db.collection('generations').where('userId', '==', userId).where('deletedAt', '==', null);
   if (server) q = q.where('serverId', '==', server);
   if (tool) q = q.where('toolId', '==', tool);
   q = q.orderBy('createdAt', 'desc').limit(pageSize);
@@ -351,6 +410,58 @@ async function handleGetGenerations(req, res) {
   const snap = await q.get();
   const generations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   res.status(200).json({ generations });
+}
+
+// ─── DELETE /api/generations/:id — Soft delete (compliance) ──────────────────
+
+async function handleSoftDeleteGeneration(req, res, path) {
+  const decodedToken = await verifyAuthToken(req);
+  const userId = decodedToken.uid;
+  const match = path.match(/^\/generations\/(.+)$/);
+  if (!match) { res.status(400).json({ error: 'Generation ID required' }); return; }
+
+  const genId = match[1];
+  const genRef = db.collection('generations').doc(genId);
+  const genDoc = await genRef.get();
+  if (!genDoc.exists || genDoc.data().userId !== userId) {
+    res.status(404).json({ error: 'Generation not found' });
+    return;
+  }
+  // Soft delete only — never remove from GCS
+  await genRef.update({ deletedAt: FieldValue.serverTimestamp() });
+  res.status(200).json({ success: true, message: 'Generation soft-deleted' });
+}
+
+// ─── GET /api/media/:generationId — Serve media from GCS ────────────────────
+
+async function handleGetMedia(req, res, path) {
+  const decodedToken = await verifyAuthToken(req);
+  const userId = decodedToken.uid;
+  const match = path.match(/^\/media\/(.+)$/);
+  if (!match) { res.status(400).json({ error: 'Generation ID required' }); return; }
+
+  const genId = match[1];
+  const genDoc = await db.collection('generations').doc(genId).get();
+  if (!genDoc.exists || genDoc.data().userId !== userId) {
+    res.status(404).json({ error: 'Media not found' });
+    return;
+  }
+
+  const gen = genDoc.data();
+  if (!gen.mediaUrl) {
+    res.status(404).json({ error: 'No media file for this generation' });
+    return;
+  }
+
+  // Generate a signed URL for download (valid 1 hour)
+  const gcsPath = gen.mediaUrl.replace('gs://casey-genmedia-output/', '');
+  const file = mediaBucket.file(gcsPath);
+  const [signedUrl] = await file.getSignedUrl({
+    action: 'read',
+    expires: Date.now() + 60 * 60 * 1000,
+  });
+
+  res.status(200).json({ url: signedUrl, mediaType: gen.mediaType, mediaSizeBytes: gen.mediaSizeBytes });
 }
 
 // ─── POST /api/mcp — Tool call with sync/async mode ─────────────────────────
@@ -465,9 +576,19 @@ async function handleMcpCall(req, res) {
   });
 
   const mediaType = detectMediaType(result);
-  await db.collection('generations').add({
-    userId, serverId: resolvedServer, toolId: tool, prompt: promptText, result, mediaType, mediaUrl: null,
-    createdAt: FieldValue.serverTimestamp(), sessionId: firestoreSessionId, status: 'completed', duration,
+  const genRef = db.collection('generations').doc();
+  let mediaInfo = { mediaUrl: null, mediaType: mediaType, mediaSizeBytes: null };
+  try {
+    const uploaded = await uploadMediaToGCS(result, userId, genRef.id);
+    if (uploaded) mediaInfo = uploaded;
+  } catch (uploadErr) {
+    console.error(`[mcpProxy] GCS upload failed:`, uploadErr.message);
+  }
+
+  await genRef.set({
+    userId, serverId: resolvedServer, toolId: tool, prompt: promptText, result,
+    mediaUrl: mediaInfo.mediaUrl, mediaType: mediaInfo.mediaType, mediaSizeBytes: mediaInfo.mediaSizeBytes,
+    createdAt: FieldValue.serverTimestamp(), deletedAt: null, sessionId: firestoreSessionId, status: 'completed', duration,
   });
 
   res.status(200).json({
