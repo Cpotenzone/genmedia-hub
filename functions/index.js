@@ -536,7 +536,16 @@ async function handleMcpCall(req, res) {
   const decodedToken = await verifyAuthToken(req);
   const userId = decodedToken.uid;
 
-  let { server, tool, params = {}, sessionId: clientSessionId, mode } = req.body;
+  // Ensure user doc exists (server-side backup for client failures)
+  const userRef = db.collection('users').doc(userId);
+  await userRef.set({
+    email: decodedToken.email || '',
+    displayName: decodedToken.name || '',
+    photoURL: decodedToken.picture || '',
+    lastActive: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  let { server, tool, params = {}, sessionId: clientSessionId, mcpSessionId: clientMcpSessionId, mode } = req.body;
   if (!server || !tool) {
     const pathParts = req.path.split('/').filter(Boolean);
     if (pathParts.length >= 2) {
@@ -603,9 +612,9 @@ async function handleMcpCall(req, res) {
   const promptText = cleanParams.description || cleanParams.prompt || cleanParams.response || Object.values(cleanParams)[0] || '';
 
   let firestoreSessionId = clientSessionId || null;
-  let existingMcpSessionId = null;
+  let existingMcpSessionId = clientMcpSessionId || null;
 
-  if (firestoreSessionId) {
+  if (firestoreSessionId && !existingMcpSessionId) {
     const sessionDoc = await db.collection('sessions').doc(firestoreSessionId).get();
     if (sessionDoc.exists && sessionDoc.data().userId === userId) {
       existingMcpSessionId = sessionDoc.data().mcpSessionId || null;

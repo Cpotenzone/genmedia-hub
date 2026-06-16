@@ -10,6 +10,7 @@ export default function ConversationPanel({ tool, server, onClose, resumeSession
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(resumeSession?.id || null);
+  const [mcpSessionId, setMcpSessionId] = useState(null);
   const [started, setStarted] = useState(!!resumeSession);
   const [formData, setFormData] = useState({});
   const [elapsed, setElapsed] = useState(0);
@@ -71,6 +72,7 @@ export default function ConversationPanel({ tool, server, onClose, resumeSession
       if (!token) throw new Error("Not authenticated");
       const body = { server: server.id, tool: tool.id, params };
       if (sessionId) body.sessionId = sessionId;
+      if (mcpSessionId) body.mcpSessionId = mcpSessionId;
       const response = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -84,9 +86,14 @@ export default function ConversationPanel({ tool, server, onClose, resumeSession
       // Store sessionId from backend
       if (data.sessionId && !sessionId) {
         setSessionId(data.sessionId);
+        localStorage.setItem("genmedia-last-session", data.sessionId);
         if (toast) toast("Session created", "success");
       } else if (data.sessionId) {
         setSessionId(data.sessionId);
+      }
+      // Store mcpSessionId for Cloud Run threading
+      if (data.mcpSessionId) {
+        setMcpSessionId(data.mcpSessionId);
       }
       const content = data.result?.content || [];
       const textBlocks = content.filter((b) => b.type === "text").map((b) => b.text).join("\n\n");
