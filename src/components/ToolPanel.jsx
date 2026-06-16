@@ -185,6 +185,31 @@ export default function ToolPanel({ tool, server, onClose }) {
   const [promptHistory, setPromptHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
 
+  // Load past generations for this tool from Firestore
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const res = await fetch(`/api/generations?server=${server.id}&tool=${tool.id}&limit=20`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const pastResults = (data.generations || []).map(g => ({
+            id: g.id,
+            prompt: g.prompt || '',
+            result: g.result || {},
+            timestamp: g.createdAt?.toDate ? new Date(g.createdAt.seconds * 1000) : new Date(g.createdAt?._seconds * 1000 || 0),
+          }));
+          if (pastResults.length) setResults(pastResults);
+        }
+      } catch (e) {
+        console.warn('Failed to load generation history:', e);
+      }
+    })();
+  }, [tool.id, server.id]);
+
   const handleChange = (name, value) => setFormData((prev) => ({ ...prev, [name]: value }));
 
   // Get the primary prompt field (first textarea or first required field)

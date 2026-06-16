@@ -315,14 +315,41 @@ function UserMessage({ message }) {
   );
 }
 
-export default function ConversationPanel({ tool, server, onClose }) {
+export default function ConversationPanel({ tool, server, onClose, resumeSession }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
-  const [started, setStarted] = useState(false);
+  const [sessionId, setSessionId] = useState(resumeSession?.id || null);
+  const [started, setStarted] = useState(!!resumeSession);
   const [formData, setFormData] = useState({});
   const scrollRef = useRef(null);
+
+  // Load previous messages if resuming a session
+  useEffect(() => {
+    if (!resumeSession?.id) return;
+    (async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(`/api/sessions/${resumeSession.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const loaded = (data.messages || []).map(m => ({
+            role: m.role,
+            text: m.content,
+            raw: m.role === 'agent' ? m.content : undefined,
+            time: m.timestamp?.toDate ? new Date(m.timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            selectedOption: null,
+            onSelect: null,
+          }));
+          setMessages(loaded);
+        }
+      } catch (e) {
+        console.warn('Failed to load session messages:', e);
+      }
+    })();
+  }, [resumeSession]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -338,7 +365,7 @@ export default function ConversationPanel({ tool, server, onClose }) {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Not authenticated");
       const body = { server: server.id, tool: tool.id, params };
-      if (isFollowUp && sessionId) body.sessionId = sessionId;
+      if (sessionId) body.sessionId = sessionId;
       const response = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

@@ -7,13 +7,15 @@ import {
   Sparkles,
   Terminal,
   FolderDown,
+  Clock,
 } from "lucide-react";
 import { mcpServers } from "../lib/mcpServers";
 import ToolPanel from "./ToolPanel";
 import ConversationPanel from "./ConversationPanel";
 import ExportConfig from "./ExportConfig";
+import SessionSidebar from "./SessionSidebar";
+import GenerationHistory from "./GenerationHistory";
 
-/* Shimmer skeleton shown while a server's tools "load" */
 function ToolGridSkeleton() {
   return (
     <div className="p-6 lg:p-8 max-w-4xl">
@@ -46,13 +48,12 @@ function ToolGridSkeleton() {
   );
 }
 
-function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport }) {
+function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport, onHistory }) {
   return (
     <>
       {isOpen && (
         <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={onClose} />
       )}
-
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-50 w-72 bg-navy flex flex-col
                     transform transition-transform duration-300 lg:transform-none
@@ -60,15 +61,12 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
       >
         <div className="p-5 border-b border-white/10">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">
-              MCP Servers
-            </h2>
+            <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">MCP Servers</h2>
             <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10 text-white/60 lg:hidden">
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
-
         <nav className="flex-1 overflow-y-auto p-3 space-y-1">
           {servers.map((server) => {
             const Icon = server.icon;
@@ -80,16 +78,12 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-200
                   ${isActive ? "bg-tech-blue/20 border border-tech-blue/30" : "hover:bg-white/5 border border-transparent"}`}
               >
-                <div className={`w-9 h-9 rounded-lg bg-tech-blue/20 flex items-center justify-center flex-shrink-0`}>
+                <div className="w-9 h-9 rounded-lg bg-tech-blue/20 flex items-center justify-center flex-shrink-0">
                   <Icon className="w-4.5 h-4.5 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${isActive ? "text-white" : "text-white/70"}`}>
-                    {server.name}
-                  </p>
-                  <p className="text-xs text-white/40 truncate">
-                    {server.tools.length} tool{server.tools.length !== 1 && "s"}
-                  </p>
+                  <p className={`text-sm font-medium truncate ${isActive ? "text-white" : "text-white/70"}`}>{server.name}</p>
+                  <p className="text-xs text-white/40 truncate">{server.tools.length} tool{server.tools.length !== 1 && "s"}</p>
                 </div>
                 <span className="w-2 h-2 rounded-full bg-success shadow-[0_0_6px_rgba(16,185,129,0.6)] flex-shrink-0" title="Live" />
                 {isActive && <ChevronRight className="w-4 h-4 text-tech-blue flex-shrink-0" />}
@@ -97,14 +91,21 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
             );
           })}
         </nav>
-
         <div className="p-3 border-t border-white/10 space-y-2">
           <button
-            onClick={onExport}
+            onClick={() => { onHistory(); onClose(); }}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left
                        bg-white/5 border border-white/10 text-white/80
-                       hover:bg-white/10 hover:border-tech-blue/40 hover:text-white
-                       transition-all duration-300"
+                       hover:bg-white/10 hover:border-tech-blue/40 hover:text-white transition-all duration-300"
+          >
+            <Clock className="w-4 h-4 text-tech-blue" />
+            <span className="text-sm font-medium">Generation History</span>
+          </button>
+          <button
+            onClick={() => { onExport(); onClose(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left
+                       bg-white/5 border border-white/10 text-white/80
+                       hover:bg-white/10 hover:border-tech-blue/40 hover:text-white transition-all duration-300"
           >
             <FolderDown className="w-4 h-4 text-tech-blue" />
             <span className="text-sm font-medium">Export MCP Config</span>
@@ -121,7 +122,6 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
 
 function ServerView({ server, onSelectTool, onExport }) {
   const Icon = server.icon;
-
   return (
     <div className="p-6 lg:p-8 max-w-4xl view-fade-up">
       <div className="flex items-start justify-between gap-4 mb-8">
@@ -143,27 +143,18 @@ function ServerView({ server, onSelectTool, onExport }) {
         </div>
         <button
           onClick={() => onExport(server.id)}
-          className="hidden sm:flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-navy
-                     bg-white border border-gray-200 rounded-lg flex-shrink-0
-                     hover:border-tech-blue/40 hover:bg-gray-50 hover:-translate-y-0.5
-                     transition-all duration-300"
+          className="hidden sm:flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-navy bg-white border border-gray-200 rounded-lg flex-shrink-0 hover:border-tech-blue/40 hover:bg-gray-50 hover:-translate-y-0.5 transition-all duration-300"
         >
           <Terminal className="w-4 h-4 text-tech-blue" /> Export
         </button>
       </div>
-
-      <h2 className="text-xs font-semibold text-steel uppercase tracking-[0.1em] mb-4">
-        Available Tools · {server.tools.length}
-      </h2>
-
+      <h2 className="text-xs font-semibold text-steel uppercase tracking-[0.1em] mb-4">Available Tools · {server.tools.length}</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {server.tools.map((tool) => (
           <button
             key={tool.id}
             onClick={() => onSelectTool(tool)}
-            className="group text-left p-5 rounded-xl bg-white border border-gray-200
-                       hover:border-tech-blue/40 hover:shadow-md hover:-translate-y-1
-                       transition-all duration-300"
+            className="group text-left p-5 rounded-xl bg-white border border-gray-200 hover:border-tech-blue/40 hover:shadow-md hover:-translate-y-1 transition-all duration-300"
           >
             <div className="flex items-start justify-between mb-3">
               <div className="w-9 h-9 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center group-hover:border-tech-blue/30 group-hover:bg-tech-blue/5 group-hover:scale-105 transition-all duration-300">
@@ -171,20 +162,12 @@ function ServerView({ server, onSelectTool, onExport }) {
               </div>
               <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-tech-blue group-hover:translate-x-0.5 transition-all duration-300" />
             </div>
-            {tool.role && (
-              <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-indigo mb-1">
-                {tool.role}
-              </span>
-            )}
+            {tool.role && <span className="block text-[10px] font-bold uppercase tracking-[0.1em] text-indigo mb-1">{tool.role}</span>}
             <h3 className="text-sm font-bold text-navy mb-1.5">{tool.name}</h3>
             <p className="text-xs text-steel leading-relaxed">{tool.description}</p>
             <div className="mt-3 flex items-center gap-2">
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-50 text-steel border border-gray-100">
-                {tool.parameters.length} params
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-tech-blue/10 text-tech-blue border border-tech-blue/20">
-                {tool.resultType}
-              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-50 text-steel border border-gray-100">{tool.parameters.length} params</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-tech-blue/10 text-tech-blue border border-tech-blue/20">{tool.resultType}</span>
             </div>
           </button>
         ))}
@@ -200,61 +183,111 @@ export default function Dashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportServerId, setExportServerId] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [activeSession, setActiveSession] = useState(null);
 
-  const openExport = (serverId = null) => {
-    setExportServerId(serverId);
-    setExportOpen(true);
-  };
+  // Restore last session from localStorage
+  useEffect(() => {
+    const lastSessionId = localStorage.getItem('genmedia-last-session');
+    if (lastSessionId) {
+      setActiveSession({ id: lastSessionId });
+    }
+  }, []);
 
-  // Brief shimmer when the dashboard mounts and on each server switch —
-  // gives the perceived-performance polish of a real data fetch.
+  const openExport = (serverId = null) => { setExportServerId(serverId); setExportOpen(true); };
+
   useEffect(() => {
     setLoading(true);
     const t = setTimeout(() => setLoading(false), 480);
     return () => clearTimeout(t);
   }, [activeServer]);
 
+  const handleSelectSession = (session) => {
+    setActiveSession(session);
+    localStorage.setItem('genmedia-last-session', session.id);
+    // Find the server/tool for this session
+    const srv = mcpServers.find(s => s.id === session.serverId || SERVER_ALIASES_FE[session.serverId] === s.id);
+    if (srv) {
+      setActiveServer(srv);
+      const t = srv.tools.find(t => t.id === session.toolId);
+      if (t) setActiveTool(t);
+    }
+  };
+
+  const handleNewSession = () => {
+    setActiveSession(null);
+    setActiveTool(null);
+    localStorage.removeItem('genmedia-last-session');
+  };
+
+  const handleRerun = (gen) => {
+    const srv = mcpServers.find(s => s.id === gen.serverId || SERVER_ALIASES_FE[gen.serverId] === s.id);
+    if (srv) {
+      setActiveServer(srv);
+      const t = srv.tools.find(t => t.id === gen.toolId);
+      if (t) setActiveTool(t);
+    }
+    setHistoryOpen(false);
+  };
+
+  const renderMainContent = () => {
+    if (activeTool && activeSession) {
+      // Resume a session
+      if (activeServer.id === "gstack-mcp") {
+        return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => { setActiveTool(null); setActiveSession(null); }} resumeSession={activeSession} />;
+      }
+      return <ToolPanel tool={activeTool} server={activeServer} onClose={() => { setActiveTool(null); setActiveSession(null); }} />;
+    }
+    if (activeTool) {
+      if (activeServer.id === "gstack-mcp") {
+        return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />;
+      }
+      return <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />;
+    }
+    if (loading) return <ToolGridSkeleton />;
+    return <ServerView key={activeServer.id} server={activeServer} onSelectTool={setActiveTool} onExport={openExport} />;
+  };
+
   return (
     <div className="flex h-[calc(100vh-68px)]">
       <Sidebar
         servers={mcpServers}
         activeServer={activeServer}
-        onSelectServer={(server) => { setActiveServer(server); setActiveTool(null); }}
+        onSelectServer={(server) => { setActiveServer(server); setActiveTool(null); setActiveSession(null); }}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onExport={() => { openExport(null); setSidebarOpen(false); }}
+        onHistory={() => setHistoryOpen(true)}
+      />
+
+      {/* Session Sidebar */}
+      <SessionSidebar
+        activeSessionId={activeSession?.id}
+        onSelectSession={handleSelectSession}
+        onNewSession={handleNewSession}
       />
 
       <main className="flex-1 overflow-y-auto bg-gray-50">
         <div className="lg:hidden flex items-center gap-3 p-4 border-b border-gray-200 bg-white sticky top-0 z-30">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open menu"
-            className="p-2 rounded-lg hover:bg-gray-100 text-steel hover:text-navy transition-colors duration-300"
-          >
+          <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="p-2 rounded-lg hover:bg-gray-100 text-steel hover:text-navy transition-colors duration-300">
             <Menu className="w-5 h-5" />
           </button>
           <span className="text-sm font-semibold text-navy truncate">{activeServer.name}</span>
         </div>
-
-        {activeTool ? (
-          activeServer.id === "gstack-mcp" ? (
-            <ConversationPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />
-          ) : (
-            <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />
-          )
-        ) : loading ? (
-          <ToolGridSkeleton />
-        ) : (
-          <ServerView key={activeServer.id} server={activeServer} onSelectTool={setActiveTool} onExport={openExport} />
-        )}
+        {renderMainContent()}
       </main>
 
-      <ExportConfig
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
-        initialServerId={exportServerId}
-      />
+      <ExportConfig open={exportOpen} onClose={() => setExportOpen(false)} initialServerId={exportServerId} />
+      <GenerationHistory open={historyOpen} onClose={() => setHistoryOpen(false)} onRerun={handleRerun} />
     </div>
   );
 }
+
+// Frontend alias mapping (backend serverId → frontend server.id)
+const SERVER_ALIASES_FE = {
+  'gstack-mcp': 'gstack-mcp',
+  'mcp-veo': 'genmedia-veo',
+  'mcp-nanobanana': 'genmedia-nanobanana',
+  'mcp-lyria': 'genmedia-lyria',
+  'mcp-avtool': 'genmedia-avtool',
+};
