@@ -1,8 +1,10 @@
 /**
  * GenMedia Hub — Firebase Cloud Functions
  * Authenticated proxy to Cloud Run MCP servers + persistence endpoints.
+ * Includes async job queue with Firestore-triggered processing.
  */
 import { onRequest } from 'firebase-functions/v2/https';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -50,6 +52,9 @@ const LOCAL_ONLY_SERVERS = {
   'mcp-chirp3': 'chirp3 not available via cloud',
   'mcp-gemini': 'gemini not available via cloud',
 };
+
+// Media servers default to async mode
+const ASYNC_DEFAULT_SERVERS = new Set(['mcp-veo', 'mcp-nanobanana', 'mcp-lyria', 'mcp-avtool']);
 
 async function getIdentityToken(targetUrl) {
   const client = await googleAuth.getIdTokenClient(targetUrl);
@@ -122,14 +127,12 @@ async function forwardToCloudRun(serverUrl, tool, params, existingSessionId = nu
   return { result: data.result || data, sessionId };
 }
 
-// Generate a short title from the first prompt
 function generateTitle(prompt) {
   if (!prompt) return 'New Session';
   const clean = prompt.replace(/\n/g, ' ').trim();
   return clean.length > 60 ? clean.slice(0, 57) + '...' : clean;
 }
 
-// Detect media type from MCP result content
 function detectMediaType(result) {
   const content = result?.content || [];
   for (const block of content) {
@@ -140,15 +143,90 @@ function detectMediaType(result) {
   return 'text';
 }
 
+// ─── Firestore-triggered Job Processor ───────────────────────────────────────
+
+export const processJob = onDocumentCreated(
+  { document: 'jobs/{jobId}', region: 'us-central1', memory: '1GiB', timeoutSeconds: 300 },
+  async (event) => {
+    const jobId = event.params.jobId;
+    const job = event.data.data();
+    const jobRef = db.collection('jobs').doc(jobId);
+
+    // Update status to processing
+    await jobRef.update({ status: 'processing', startedAt: FieldValue.serverTimestamp() });
+
+    const server = SERVER_ALIASES[job.serverId] || job.serverId;
+    const serverConfig = MCP_SERVERS[server];
+
+    if (!serverConfig) {
+      await jobRef.update({ status: 'failed', error: `Unknown server: ${server}`, completedAt: FieldValue.serverTimestamp() });
+      return;
+    }
+
+    try {
+      const { result, sessionId: mcpSessionId } = await forwardToCloudRun(serverConfig.url, job.toolId, job.params || {});
+
+      // Update job with result
+      await jobRef.update({
+        status: 'completed',
+        result,
+        mcpSessionId: mcpSessionId || null,
+        completedAt: FieldValue.serverTimestamp(),
+      });
+
+      // Create generation record
+      const promptText = job.params?.description || job.params?.prompt || job.params?.response || Object.values(job.params || {})[0] || '';
+      const mediaType = detectMediaType(result);
+      await db.collection('generations').add({
+        userId: job.userId,
+        serverId: server,
+        toolId: job.toolId,
+        prompt: promptText,
+        result,
+        mediaType,
+        mediaUrl: null,
+        createdAt: FieldValue.serverTimestamp(),
+        sessionId: job.sessionId || null,
+        status: 'completed',
+        duration: null,
+        jobId,
+      });
+
+      // If there's a session, save messages
+      if (job.sessionId) {
+        const sessionRef = db.collection('sessions').doc(job.sessionId);
+        await sessionRef.update({ updatedAt: FieldValue.serverTimestamp(), lastMessage: promptText.slice(0, 100) });
+        await sessionRef.collection('messages').add({
+          role: 'user', content: promptText, timestamp: FieldValue.serverTimestamp(), metadata: {},
+        });
+        const content = result?.content || [];
+        const textContent = content.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
+        await sessionRef.collection('messages').add({
+          role: 'agent', content: textContent, contentBlocks: content, timestamp: FieldValue.serverTimestamp(), metadata: { model: server },
+        });
+      }
+    } catch (err) {
+      console.error(`[processJob] Job ${jobId} failed:`, err.message);
+      await jobRef.update({
+        status: 'failed',
+        error: err.message || 'Unknown error',
+        completedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+);
+
 // ─── API Router ──────────────────────────────────────────────────────────────
 
 export const mcpProxy = onRequest(
   { region: 'us-central1', memory: '1GiB', timeoutSeconds: 120, maxInstances: 50, cors: true, invoker: 'public' },
   async (req, res) => {
-    // Route based on method + path
     const path = req.path.replace(/^\/api/, '').replace(/\/$/, '');
 
     try {
+      if (path.startsWith('/jobs') && req.method === 'GET') {
+        return await handleGetJobs(req, res, path);
+      }
       if (path.startsWith('/sessions') && req.method === 'GET') {
         return await handleGetSessions(req, res, path);
       }
@@ -161,7 +239,6 @@ export const mcpProxy = onRequest(
       if ((path === '/mcp' || path === '') && req.method === 'POST') {
         return await handleMcpCall(req, res);
       }
-      // Fallback: treat POST to any path as MCP call
       if (req.method === 'POST') {
         return await handleMcpCall(req, res);
       }
@@ -174,13 +251,43 @@ export const mcpProxy = onRequest(
   }
 );
 
+// ─── GET /api/jobs and GET /api/jobs/:id ─────────────────────────────────────
+
+async function handleGetJobs(req, res, path) {
+  const decodedToken = await verifyAuthToken(req);
+  const userId = decodedToken.uid;
+
+  // Specific job: /jobs/:id
+  const match = path.match(/^\/jobs\/(.+)$/);
+  if (match) {
+    const jobId = match[1];
+    const jobDoc = await db.collection('jobs').doc(jobId).get();
+    if (!jobDoc.exists || jobDoc.data().userId !== userId) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    res.status(200).json({ job: { id: jobDoc.id, ...jobDoc.data() } });
+    return;
+  }
+
+  // List jobs with optional status filter
+  const status = req.query.status;
+  const pageSize = parseInt(req.query.limit) || 50;
+  let q = db.collection('jobs').where('userId', '==', userId);
+  if (status) q = q.where('status', '==', status);
+  q = q.orderBy('createdAt', 'desc').limit(pageSize);
+
+  const snap = await q.get();
+  const jobs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  res.status(200).json({ jobs });
+}
+
 // ─── GET /api/sessions and GET /api/sessions/:id ─────────────────────────────
 
 async function handleGetSessions(req, res, path) {
   const decodedToken = await verifyAuthToken(req);
   const userId = decodedToken.uid;
 
-  // Check if requesting a specific session: /sessions/:id
   const match = path.match(/^\/sessions\/(.+)$/);
   if (match) {
     const sessionId = match[1];
@@ -196,7 +303,6 @@ async function handleGetSessions(req, res, path) {
     return;
   }
 
-  // List sessions
   const pageSize = parseInt(req.query.limit) || 50;
   const sessionsQuery = db.collection('sessions')
     .where('userId', '==', userId)
@@ -247,14 +353,14 @@ async function handleGetGenerations(req, res) {
   res.status(200).json({ generations });
 }
 
-// ─── POST /api/mcp — Tool call with persistence ─────────────────────────────
+// ─── POST /api/mcp — Tool call with sync/async mode ─────────────────────────
 
 async function handleMcpCall(req, res) {
   const startTime = Date.now();
   const decodedToken = await verifyAuthToken(req);
   const userId = decodedToken.uid;
 
-  let { server, tool, params = {}, sessionId: clientSessionId } = req.body;
+  let { server, tool, params = {}, sessionId: clientSessionId, mode } = req.body;
   if (!server || !tool) {
     const pathParts = req.path.split('/').filter(Boolean);
     if (pathParts.length >= 2) {
@@ -264,9 +370,9 @@ async function handleMcpCall(req, res) {
     }
   }
 
-  server = SERVER_ALIASES[server] || server;
+  const resolvedServer = SERVER_ALIASES[server] || server;
 
-  if (!server || typeof server !== 'string') {
+  if (!resolvedServer || typeof resolvedServer !== 'string') {
     res.status(400).json({ error: 'Missing required field: "server"', availableServers: [...Object.keys(MCP_SERVERS), ...Object.keys(LOCAL_ONLY_SERVERS)] });
     return;
   }
@@ -274,13 +380,13 @@ async function handleMcpCall(req, res) {
     res.status(400).json({ error: 'Missing required field: "tool"' });
     return;
   }
-  if (LOCAL_ONLY_SERVERS[server]) {
-    res.status(400).json({ error: LOCAL_ONLY_SERVERS[server], server });
+  if (LOCAL_ONLY_SERVERS[resolvedServer]) {
+    res.status(400).json({ error: LOCAL_ONLY_SERVERS[resolvedServer], server: resolvedServer });
     return;
   }
-  const serverConfig = MCP_SERVERS[server];
+  const serverConfig = MCP_SERVERS[resolvedServer];
   if (!serverConfig) {
-    res.status(400).json({ error: `Unknown server: "${server}"`, availableServers: Object.keys(MCP_SERVERS) });
+    res.status(400).json({ error: `Unknown server: "${resolvedServer}"`, availableServers: Object.keys(MCP_SERVERS) });
     return;
   }
 
@@ -289,93 +395,83 @@ async function handleMcpCall(req, res) {
     if (v !== '' && v !== null && v !== undefined) cleanParams[k] = v;
   }
 
-  // Determine prompt text for persistence
+  // Determine mode: explicit > server default
+  const effectiveMode = mode || (ASYNC_DEFAULT_SERVERS.has(resolvedServer) ? 'async' : 'sync');
+
+  // ─── ASYNC MODE: Queue and return immediately ───
+  if (effectiveMode === 'async') {
+    const jobRef = await db.collection('jobs').add({
+      userId,
+      serverId: server, // Keep original server ID for frontend
+      toolId: tool,
+      params: cleanParams,
+      status: 'queued',
+      result: null,
+      error: null,
+      createdAt: FieldValue.serverTimestamp(),
+      startedAt: null,
+      completedAt: null,
+      sessionId: clientSessionId || null,
+    });
+
+    res.status(202).json({
+      success: true,
+      jobId: jobRef.id,
+      status: 'queued',
+      mode: 'async',
+    });
+    return;
+  }
+
+  // ─── SYNC MODE: Process immediately (existing behavior) ───
   const promptText = cleanParams.description || cleanParams.prompt || cleanParams.response || Object.values(cleanParams)[0] || '';
 
-  // Resolve or create session
   let firestoreSessionId = clientSessionId || null;
   let existingMcpSessionId = null;
 
   if (firestoreSessionId) {
-    // Resume existing session — get its mcpSessionId
     const sessionDoc = await db.collection('sessions').doc(firestoreSessionId).get();
     if (sessionDoc.exists && sessionDoc.data().userId === userId) {
       existingMcpSessionId = sessionDoc.data().mcpSessionId || null;
     }
   }
 
-  // Forward to Cloud Run
-  console.log(`[mcpProxy] uid=${userId} server=${server} tool=${tool}`);
+  console.log(`[mcpProxy] uid=${userId} server=${resolvedServer} tool=${tool} mode=sync`);
   const { result, sessionId: mcpSessionId } = await forwardToCloudRun(serverConfig.url, tool, cleanParams, existingMcpSessionId);
   const duration = Date.now() - startTime;
 
-  // Persist session
   if (!firestoreSessionId) {
-    // Create new session
     const sessionRef = await db.collection('sessions').add({
-      userId,
-      serverId: server,
-      toolId: tool,
-      mcpSessionId: mcpSessionId || null,
-      title: generateTitle(promptText),
-      status: 'active',
-      deleted: false,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      lastMessage: promptText.slice(0, 100),
+      userId, serverId: resolvedServer, toolId: tool, mcpSessionId: mcpSessionId || null,
+      title: generateTitle(promptText), status: 'active', deleted: false,
+      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), lastMessage: promptText.slice(0, 100),
     });
     firestoreSessionId = sessionRef.id;
   } else {
-    // Update existing session
     await db.collection('sessions').doc(firestoreSessionId).update({
-      mcpSessionId: mcpSessionId || FieldValue.delete(),
-      updatedAt: FieldValue.serverTimestamp(),
-      lastMessage: promptText.slice(0, 100),
+      mcpSessionId: mcpSessionId || FieldValue.delete(), updatedAt: FieldValue.serverTimestamp(), lastMessage: promptText.slice(0, 100),
     });
   }
 
-  // Save user message
   await db.collection('sessions').doc(firestoreSessionId).collection('messages').add({
-    role: 'user',
-    content: promptText,
-    timestamp: FieldValue.serverTimestamp(),
-    metadata: {},
+    role: 'user', content: promptText, timestamp: FieldValue.serverTimestamp(), metadata: {},
   });
 
-  // Save agent response
   const content = result?.content || [];
   const textContent = content.filter(b => b.type === 'text').map(b => b.text).join('\n\n');
   await db.collection('sessions').doc(firestoreSessionId).collection('messages').add({
-    role: 'agent',
-    content: textContent,
-    contentBlocks: content,
-    timestamp: FieldValue.serverTimestamp(),
-    metadata: { duration, model: server },
+    role: 'agent', content: textContent, contentBlocks: content, timestamp: FieldValue.serverTimestamp(), metadata: { duration, model: resolvedServer },
   });
 
-  // Save generation record
   const mediaType = detectMediaType(result);
   await db.collection('generations').add({
-    userId,
-    serverId: server,
-    toolId: tool,
-    prompt: promptText,
-    result,
-    mediaType,
-    mediaUrl: null,
-    createdAt: FieldValue.serverTimestamp(),
-    sessionId: firestoreSessionId,
-    status: 'completed',
-    duration,
+    userId, serverId: resolvedServer, toolId: tool, prompt: promptText, result, mediaType, mediaUrl: null,
+    createdAt: FieldValue.serverTimestamp(), sessionId: firestoreSessionId, status: 'completed', duration,
   });
 
   res.status(200).json({
-    success: true,
-    server,
-    tool,
-    result,
-    sessionId: firestoreSessionId,
-    mcpSessionId: mcpSessionId || null,
+    success: true, server: resolvedServer, tool, result, sessionId: firestoreSessionId,
+    mcpSessionId: mcpSessionId || null, mode: 'sync',
     meta: { duration, timestamp: new Date().toISOString() },
   });
 }

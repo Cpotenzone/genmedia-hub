@@ -8,6 +8,7 @@ import {
   RotateCcw,
   Clock,
   ChevronDown,
+  CheckCircle2,
 } from "lucide-react";
 import { auth } from "../lib/firebase";
 
@@ -174,6 +175,9 @@ function PromptHistory({ history, onSelect, isOpen, onToggle }) {
   );
 }
 
+// Servers that default to async
+const ASYNC_SERVERS = new Set(['genmedia-veo', 'genmedia-nanobanana', 'genmedia-lyria', 'genmedia-avtool']);
+
 export default function ToolPanel({ tool, server, onClose }) {
   const [formData, setFormData] = useState(() => {
     const defaults = {};
@@ -184,6 +188,8 @@ export default function ToolPanel({ tool, server, onClose }) {
   const [results, setResults] = useState([]); // gallery of results
   const [promptHistory, setPromptHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [waitForResult, setWaitForResult] = useState(!ASYNC_SERVERS.has(server.id));
+  const [queuedToast, setQueuedToast] = useState(null);
 
   // Load past generations for this tool from Firestore
   useEffect(() => {
@@ -225,6 +231,8 @@ export default function ToolPanel({ tool, server, onClose }) {
       setPromptHistory((prev) => [promptVal, ...prev].slice(0, 10));
     }
 
+    const mode = waitForResult ? 'sync' : 'async';
+
     try {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Not authenticated");
@@ -239,7 +247,7 @@ export default function ToolPanel({ tool, server, onClose }) {
       const response = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ server: server.id, tool: tool.id, params: cleanParams }),
+        body: JSON.stringify({ server: server.id, tool: tool.id, params: cleanParams, mode }),
       });
 
       if (!response.ok) {
@@ -248,6 +256,16 @@ export default function ToolPanel({ tool, server, onClose }) {
       }
 
       const data = await response.json();
+
+      if (data.mode === 'async' || data.status === 'queued') {
+        // Show queued toast, don't block UI
+        setQueuedToast({ jobId: data.jobId, prompt: promptVal });
+        setTimeout(() => setQueuedToast(null), 4000);
+        setLoading(false);
+        return;
+      }
+
+      // Sync mode — show result immediately
       setResults((prev) => [{ id: Date.now(), prompt: promptVal || JSON.stringify(cleanParams), result: data, timestamp: new Date() }, ...prev]);
     } catch (err) {
       setResults((prev) => [{ id: Date.now(), prompt: promptVal || "", result: { error: err.message }, timestamp: new Date() }, ...prev]);
@@ -313,8 +331,31 @@ export default function ToolPanel({ tool, server, onClose }) {
             >
               {loading ? <><Loader2 className="w-4 h-4 animate-spin" />Processing...</> : <><Play className="w-4 h-4" />Execute</>}
             </button>
+            {/* Async/sync toggle for media servers */}
+            {ASYNC_SERVERS.has(server.id) && (
+              <label className="flex items-center gap-2 text-xs text-steel cursor-pointer select-none mt-2">
+                <input
+                  type="checkbox"
+                  checked={waitForResult}
+                  onChange={(e) => setWaitForResult(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-tech-blue focus:ring-tech-blue/30"
+                />
+                Wait for result (slower, shows inline)
+              </label>
+            )}
           </form>
         </div>
+
+        {/* Queued toast */}
+        {queuedToast && (
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 border border-green-200 card-enter">
+            <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-green-800">Queued ✓</p>
+              <p className="text-xs text-green-600 truncate">Job {queuedToast.jobId?.slice(0, 8)}… — check the Job Queue panel for status</p>
+            </div>
+          </div>
+        )}
 
         {/* Results gallery */}
         {(loading || results.length > 0) && (

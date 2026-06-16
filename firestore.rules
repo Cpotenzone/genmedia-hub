@@ -46,6 +46,17 @@ service cloud.firestore {
       }
     }
 
+    // ─── Jobs Collection (async queue) ────────────────────────────────
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      // Only Cloud Functions update jobs (via admin SDK)
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // ─── Generations Collection ─────────────────────────────────────────
     match /generations/{generationId} {
       allow read: if isAuthenticated()

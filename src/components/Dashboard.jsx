@@ -15,6 +15,7 @@ import ConversationPanel from "./ConversationPanel";
 import ExportConfig from "./ExportConfig";
 import SessionSidebar from "./SessionSidebar";
 import GenerationHistory from "./GenerationHistory";
+import JobQueue from "./JobQueue";
 
 function ToolGridSkeleton() {
   return (
@@ -279,6 +280,7 @@ export default function Dashboard({ user }) {
 
       <ExportConfig open={exportOpen} onClose={() => setExportOpen(false)} initialServerId={exportServerId} />
       <GenerationHistory open={historyOpen} onClose={() => setHistoryOpen(false)} onRerun={handleRerun} />
+      <JobQueue onViewJob={(job) => { /* Navigate to result when implemented */ }} />
     </div>
   );
 }
