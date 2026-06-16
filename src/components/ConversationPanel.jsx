@@ -52,20 +52,35 @@ function parseXMLQuestion(text) {
   return questions;
 }
 
-// Parse Python-style AskUserQuestion(...) format (fallback)
+// Parse Python-style AskUserQuestion(...) format (fallback — no gstack-qid tag)
 function parsePythonQuestion(text) {
   const questions = [];
-  const regex = /AskUserQuestion\(\s*question_id=['"](.*?)['"],?\s*question_title=['"](.*?)['"],?\s*question_text=["'](.*?)["'],?\s*options=\[([\s\S]*?)\]\s*\)/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    const [, id, title, questionText, optionsRaw] = match;
-    const options = [];
-    const optRegex = /\{\s*key:\s*['"](.*?)['"],\s*label:\s*['"](.*?)['"],\s*description:\s*['"](.*?)['"]\s*\}/g;
-    let optMatch;
-    while ((optMatch = optRegex.exec(optionsRaw)) !== null) {
-      options.push({ key: optMatch[1], label: optMatch[2], description: optMatch[3], pros: [], cons: [], recommended: false });
+  // Find AskUserQuestion( and then balance parentheses
+  const starts = [...text.matchAll(/AskUserQuestion\(/g)];
+  for (const s of starts) {
+    let depth = 1;
+    let i = s.index + s[0].length;
+    while (i < text.length && depth > 0) {
+      if (text[i] === '(') depth++;
+      else if (text[i] === ')') depth--;
+      i++;
     }
-    questions.push({ id, title, text: questionText, options });
+    const inner = text.slice(s.index + s[0].length, i - 1);
+    const idMatch = inner.match(/question_id\s*=\s*['"](.*?)['"]/);
+    const titleMatch = inner.match(/question_title\s*=\s*['"]([\s\S]*?)['"]/);
+    const textMatch = inner.match(/question_text\s*=\s*["']([\s\S]*?)["']\s*,?\s*(?:options|$|\))/);
+    const id = idMatch ? idMatch[1] : "q-" + questions.length;
+    const title = titleMatch ? titleMatch[1] : "";
+    const qText = textMatch ? textMatch[1] : "";
+    const options = [];
+    const optRegex = /\{\s*['"]?key['"]?\s*:\s*['"](.*?)['"],\s*['"]?label['"]?\s*:\s*['"](.*?)['"](?:,\s*['"]?description['"]?\s*:\s*['"]([\s\S]*?)['"])?\s*\}/g;
+    let optMatch;
+    while ((optMatch = optRegex.exec(inner)) !== null) {
+      options.push({ key: optMatch[1], label: optMatch[2], description: optMatch[3] || "", pros: [], cons: [], recommended: false });
+    }
+    if (options.length > 0 || title) {
+      questions.push({ id, title, text: qText, options });
+    }
   }
   return questions;
 }
@@ -73,11 +88,16 @@ function parsePythonQuestion(text) {
 // Parse <gstack-qid:...> followed by AskUserQuestion(...) — handles optional <tool_code> wrapper
 function parseGstackQuestion(text) {
   const questions = [];
-  const regex = /<gstack-qid:(.*?)>\s*(?:<tool_code>\s*)?(AskUserQuestion\([\s\S]*?\)\s*)(?:<\/tool_code>)?/g;
+  // Match the gstack-qid tag, then find AskUserQuestion(...) allowing for <tool_code> wrapper
+  const regex = /<gstack-qid:(.*?)>([\s\S]*?)(?:<\/tool_code>|\n\n|$)/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
     const id = match[1].trim();
-    const inner = match[2];
+    const block = match[2];
+    // Find AskUserQuestion call within the block
+    const askIdx = block.indexOf("AskUserQuestion(");
+    if (askIdx === -1) continue;
+    const inner = block.slice(askIdx);
     const titleMatch = inner.match(/question_title\s*=\s*['"]([\s\S]*?)['"]/);
     const textMatch = inner.match(/question_text\s*=\s*["']([\s\S]*?)["']\s*,?\s*(?:options|$|\))/);
     const title = titleMatch ? titleMatch[1] : "";
@@ -117,7 +137,8 @@ function stripSpecialBlocks(text) {
   let clean = text;
   clean = clean.replace(/<mcp_conductor_AskUserQuestion>[\s\S]*?<\/mcp_conductor_AskUserQuestion>/g, "");
   clean = clean.replace(/<thinking>[\s\S]*?<\/thinking>/g, "");
-  clean = clean.replace(/<gstack-qid:.*?>\s*AskUserQuestion\([\s\S]*?\)/g, "");
+  clean = clean.replace(/<gstack-qid:.*?>[\s\S]*?(?:<\/tool_code>|AskUserQuestion\([\s\S]*?\))/g, "");
+  clean = clean.replace(/<tool_code>[\s\S]*?<\/tool_code>/g, "");
   clean = clean.replace(/AskUserQuestion\([\s\S]*?\)\s*/g, "");
   // Strip remaining XML-like tags that aren't meaningful content
   clean = clean.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_-]*(?:\s[^>]*)?\s*>/g, "");
