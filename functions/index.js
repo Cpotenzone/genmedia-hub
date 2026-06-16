@@ -1,7 +1,7 @@
 /**
  * GenMedia Hub — Firebase Cloud Functions
  * Authenticated proxy to Cloud Run MCP servers + persistence endpoints.
- * Includes async job queue with Firestore-triggered processing.
+ * Includes async job queue, admin panel, request logging, and response caching.
  */
 import { onRequest } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
@@ -10,6 +10,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleAuth } from 'google-auth-library';
 import { Storage } from '@google-cloud/storage';
+import { createHash } from 'crypto';
 
 const app = initializeApp({ projectId: 'casey-genmedia' });
 const auth = getAuth(app);
@@ -58,6 +59,65 @@ const LOCAL_ONLY_SERVERS = {
 
 // Media servers default to async mode
 const ASYNC_DEFAULT_SERVERS = new Set(['mcp-veo', 'mcp-nanobanana', 'mcp-lyria', 'mcp-avtool']);
+
+// Admin emails
+const ADMIN_EMAILS = ['casey@criticalasset.com', 'casey@insuremep.com'];
+
+function isAdmin(email) {
+  return ADMIN_EMAILS.includes(email?.toLowerCase());
+}
+
+async function verifyAdmin(req) {
+  const decodedToken = await verifyAuthToken(req);
+  if (!isAdmin(decodedToken.email)) {
+    const error = new Error('Forbidden: admin access required');
+    error.statusCode = 403;
+    throw error;
+  }
+  return decodedToken;
+}
+
+// Cache helpers
+function computeCacheKey(serverId, toolId, params) {
+  const raw = JSON.stringify({ serverId, toolId, params });
+  return createHash('sha256').update(raw).digest('hex');
+}
+
+async function getCachedResult(serverId, toolId, params) {
+  const hash = computeCacheKey(serverId, toolId, params);
+  const doc = await db.collection('cache').doc(hash).get();
+  if (!doc.exists) return null;
+  const data = doc.data();
+  if (data.expiresAt && data.expiresAt.toDate() < new Date()) return null;
+  await db.collection('cache').doc(hash).update({ hitCount: FieldValue.increment(1) });
+  return data.result;
+}
+
+async function setCachedResult(serverId, toolId, params, result) {
+  const hash = computeCacheKey(serverId, toolId, params);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+  await db.collection('cache').doc(hash).set({
+    serverId, toolId, paramsHash: hash, result,
+    createdAt: now, expiresAt, hitCount: 0,
+  });
+}
+
+// Request logging helper
+async function logRequest({ userId, userEmail, userName, serverId, toolId, params, result, status, errorMessage, duration, sessionId, jobId }) {
+  const resultStr = JSON.stringify(result || '');
+  await db.collection('requests').add({
+    userId, userEmail: userEmail || '', userName: userName || '',
+    serverId, toolId, params: params || {},
+    result: result || null,
+    status, errorMessage: errorMessage || null,
+    duration: duration || 0,
+    timestamp: FieldValue.serverTimestamp(),
+    sessionId: sessionId || null,
+    jobId: jobId || null,
+    responseSize: resultStr.length,
+  });
+}
 
 async function getIdentityToken(targetUrl) {
   const client = await googleAuth.getIdTokenClient(targetUrl);
@@ -277,6 +337,9 @@ export const mcpProxy = onRequest(
     const path = req.path.replace(/^\/api/, '').replace(/\/$/, '');
 
     try {
+      if (path.startsWith('/admin/')) {
+        return await handleAdminRoutes(req, res, path);
+      }
       if (path.startsWith('/jobs') && req.method === 'GET') {
         return await handleGetJobs(req, res, path);
       }
@@ -548,8 +611,35 @@ async function handleMcpCall(req, res) {
   }
 
   console.log(`[mcpProxy] uid=${userId} server=${resolvedServer} tool=${tool} mode=sync`);
-  const { result, sessionId: mcpSessionId } = await forwardToCloudRun(serverConfig.url, tool, cleanParams, existingMcpSessionId);
+
+  // Check cache
+  const cachedResult = await getCachedResult(resolvedServer, tool, cleanParams);
+  if (cachedResult) {
+    const duration = Date.now() - startTime;
+    await logRequest({ userId, userEmail: decodedToken.email, userName: decodedToken.name, serverId: resolvedServer, toolId: tool, params: cleanParams, result: cachedResult, status: 'success', duration, sessionId: firestoreSessionId });
+    res.status(200).json({ success: true, server: resolvedServer, tool, result: cachedResult, cached: true, sessionId: firestoreSessionId, mode: 'sync', meta: { duration, timestamp: new Date().toISOString() } });
+    return;
+  }
+
+  let mcpResult, mcpSessionId;
+  try {
+    const response = await forwardToCloudRun(serverConfig.url, tool, cleanParams, existingMcpSessionId);
+    mcpResult = response.result;
+    mcpSessionId = response.sessionId;
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    await logRequest({ userId, userEmail: decodedToken.email, userName: decodedToken.name, serverId: resolvedServer, toolId: tool, params: cleanParams, result: null, status: 'error', errorMessage: err.message, duration, sessionId: firestoreSessionId });
+    throw err;
+  }
+  const result = mcpResult;
+  const sessionId = mcpSessionId;
   const duration = Date.now() - startTime;
+
+  // Cache the result
+  await setCachedResult(resolvedServer, tool, cleanParams, result).catch(() => {});
+
+  // Log request
+  await logRequest({ userId, userEmail: decodedToken.email, userName: decodedToken.name, serverId: resolvedServer, toolId: tool, params: cleanParams, result, status: 'success', duration, sessionId: firestoreSessionId });
 
   if (!firestoreSessionId) {
     const sessionRef = await db.collection('sessions').add({
@@ -596,6 +686,110 @@ async function handleMcpCall(req, res) {
     mcpSessionId: mcpSessionId || null, mode: 'sync',
     meta: { duration, timestamp: new Date().toISOString() },
   });
+}
+
+// ─── Admin Routes ────────────────────────────────────────────────────────────
+
+async function handleAdminRoutes(req, res, path) {
+  const decodedToken = await verifyAdmin(req);
+
+  // GET /admin/users
+  if (path === '/admin/users' && req.method === 'GET') {
+    const usersSnap = await db.collection('users').get();
+    const users = [];
+    for (const doc of usersSnap.docs) {
+      const u = doc.data();
+      const genSnap = await db.collection('generations').where('userId', '==', doc.id).count().get();
+      const sessSnap = await db.collection('sessions').where('userId', '==', doc.id).count().get();
+      users.push({ id: doc.id, email: u.email, displayName: u.displayName, lastLogin: u.lastLogin, totalGenerations: genSnap.data().count, totalSessions: sessSnap.data().count });
+    }
+    return res.status(200).json({ users });
+  }
+
+  // GET /admin/users/:userId
+  const userMatch = path.match(/^\/admin\/users\/([^/]+)$/);
+  if (userMatch && req.method === 'GET') {
+    const uid = userMatch[1];
+    const userDoc = await db.collection('users').doc(uid).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    const sessions = (await db.collection('sessions').where('userId', '==', uid).orderBy('updatedAt', 'desc').limit(50).get()).docs.map(d => ({ id: d.id, ...d.data() }));
+    const generations = (await db.collection('generations').where('userId', '==', uid).orderBy('createdAt', 'desc').limit(50).get()).docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.status(200).json({ user: { id: uid, ...userDoc.data() }, sessions, generations });
+  }
+
+  // GET /admin/requests
+  if (path === '/admin/requests' && req.method === 'GET') {
+    const pageSize = parseInt(req.query.limit) || 50;
+    const snap = await db.collection('requests').orderBy('timestamp', 'desc').limit(pageSize).get();
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.status(200).json({ requests });
+  }
+
+  // GET /admin/requests/:id
+  const reqMatch = path.match(/^\/admin\/requests\/([^/]+)$/);
+  if (reqMatch && req.method === 'GET') {
+    const doc = await db.collection('requests').doc(reqMatch[1]).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Request not found' });
+    return res.status(200).json({ request: { id: doc.id, ...doc.data() } });
+  }
+
+  // GET /admin/generations
+  if (path === '/admin/generations' && req.method === 'GET') {
+    const pageSize = parseInt(req.query.limit) || 50;
+    const snap = await db.collection('generations').orderBy('createdAt', 'desc').limit(pageSize).get();
+    const generations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return res.status(200).json({ generations });
+  }
+
+  // GET /admin/stats
+  if (path === '/admin/stats' && req.method === 'GET') {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart.getTime() - 7 * 86400000);
+    const monthStart = new Date(todayStart.getTime() - 30 * 86400000);
+
+    const [totalUsersSnap, allReqSnap, todayReqSnap, weekReqSnap, monthReqSnap, cacheSnap] = await Promise.all([
+      db.collection('users').count().get(),
+      db.collection('requests').count().get(),
+      db.collection('requests').where('timestamp', '>=', todayStart).count().get(),
+      db.collection('requests').where('timestamp', '>=', weekStart).count().get(),
+      db.collection('requests').where('timestamp', '>=', monthStart).count().get(),
+      db.collection('cache').get(),
+    ]);
+
+    const errSnap = await db.collection('requests').where('status', '==', 'error').count().get();
+    const totalReqs = allReqSnap.data().count;
+    const errorCount = errSnap.data().count;
+    const totalCacheHits = cacheSnap.docs.reduce((sum, d) => sum + (d.data().hitCount || 0), 0);
+
+    // requests by server (sample last 200)
+    const recentSnap = await db.collection('requests').orderBy('timestamp', 'desc').limit(200).get();
+    const byServer = {};
+    const byUser = {};
+    let totalDuration = 0;
+    recentSnap.docs.forEach(d => {
+      const data = d.data();
+      byServer[data.serverId] = (byServer[data.serverId] || 0) + 1;
+      byUser[data.userEmail] = (byUser[data.userEmail] || 0) + 1;
+      totalDuration += data.duration || 0;
+    });
+
+    return res.status(200).json({
+      totalUsers: totalUsersSnap.data().count,
+      totalRequests: totalReqs,
+      requestsToday: todayReqSnap.data().count,
+      requestsWeek: weekReqSnap.data().count,
+      requestsMonth: monthReqSnap.data().count,
+      errorRate: totalReqs > 0 ? (errorCount / totalReqs * 100).toFixed(1) : 0,
+      avgResponseTime: recentSnap.size > 0 ? Math.round(totalDuration / recentSnap.size) : 0,
+      cacheHits: totalCacheHits,
+      cacheEntries: cacheSnap.size,
+      byServer,
+      byUser,
+    });
+  }
+
+  return res.status(404).json({ error: 'Admin route not found' });
 }
 
 // ─── Health Check ────────────────────────────────────────────────────────────

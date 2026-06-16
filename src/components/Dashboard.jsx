@@ -1,5 +1,5 @@
 import React, { useState, useEffect, memo } from "react";
-import { ChevronRight, Menu, X, Wrench, Sparkles, Terminal, FolderDown, Clock, Zap } from "lucide-react";
+import { ChevronRight, Menu, X, Wrench, Sparkles, Terminal, FolderDown, Clock, Zap, Shield } from "lucide-react";
 import { mcpServers } from "../lib/mcpServers";
 import ToolPanel from "./ToolPanel";
 import ConversationPanel from "./ConversationPanel";
@@ -7,6 +7,7 @@ import ExportConfig from "./ExportConfig";
 import SessionSidebar from "./SessionSidebar";
 import GenerationHistory from "./GenerationHistory";
 import JobQueue, { JobQueuePanel, useJobs } from "./JobQueue";
+import AdminPanel, { isAdminUser } from "./AdminPanel";
 
 const SERVER_ALIASES_FE = {
   "gstack-mcp": "gstack-mcp",
@@ -48,7 +49,7 @@ function ToolGridSkeleton() {
   );
 }
 
-function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport, onHistory, onQueue, pendingJobCount }) {
+function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport, onHistory, onQueue, pendingJobCount, isAdmin, onAdmin }) {
   return (
     <>
       {isOpen && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={onClose} />}
@@ -127,6 +128,16 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
             <Sparkles className="w-4 h-4 text-success" />
             <span className="text-xs text-success font-medium">All servers operational</span>
           </div>
+          {isAdmin && (
+            <button
+              onClick={() => { onAdmin(); onClose(); }}
+              aria-label="Admin panel"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left bg-indigo/10 border border-indigo/30 text-white/90 hover:bg-indigo/20 hover:border-indigo/50 hover:text-white transition-all duration-200 active:scale-[0.98]"
+            >
+              <Shield className="w-4 h-4 text-indigo" />
+              <span className="text-sm font-medium">Admin</span>
+            </button>
+          )}
         </div>
       </aside>
     </>
@@ -201,7 +212,9 @@ export default function Dashboard({ user }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const { pendingCount } = useJobs();
+  const admin = isAdminUser(user);
 
   useEffect(() => {
     const lastSessionId = localStorage.getItem("genmedia-last-session");
@@ -276,6 +289,8 @@ export default function Dashboard({ user }) {
         onHistory={() => setHistoryOpen(true)}
         onQueue={() => { setQueueOpen(true); setActiveTool(null); setActiveSession(null); }}
         pendingJobCount={pendingCount}
+        isAdmin={admin}
+        onAdmin={() => setAdminOpen(true)}
       />
       <SessionSidebar activeSessionId={activeSession?.id} onSelectSession={handleSelectSession} onNewSession={handleNewSession} />
       <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
@@ -290,6 +305,7 @@ export default function Dashboard({ user }) {
       <ExportConfig open={exportOpen} onClose={() => setExportOpen(false)} initialServerId={exportServerId} />
       <GenerationHistory open={historyOpen} onClose={() => setHistoryOpen(false)} onRerun={handleRerun} />
       <JobQueue onViewJob={(job) => {}} />
+      {adminOpen && <AdminPanel onClose={() => setAdminOpen(false)} />}
     </div>
   );
 }
