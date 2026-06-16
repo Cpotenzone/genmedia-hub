@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Shield, Users, Activity, Image, Radio, X, RotateCcw, ChevronDown } from "lucide-react";
+import { Shield, Users, Activity, Image, Radio, X, RotateCcw, ChevronDown, Globe } from "lucide-react";
 import { getDb } from "../lib/firebase";
 import { collection, query, orderBy, limit, onSnapshot, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth } from "../lib/firebase";
@@ -201,10 +201,88 @@ function LiveFeed({ items }) {
   );
 }
 
+// ─── Cloud Activity (All Platform Requests via Cloud Logging) ────────────────
+
+function CloudActivity({ logs, onRefresh, filters, setFilters }) {
+  const sourceColors = { "Web App": "bg-blue-100 text-blue-700", "Claude": "bg-purple-100 text-purple-700", "Kiro": "bg-amber-100 text-amber-700", "Antigravity": "bg-pink-100 text-pink-700", "Direct API": "bg-gray-100 text-gray-600" };
+  const statusColor = (s) => s >= 200 && s < 300 ? "text-emerald-600" : s >= 400 ? "text-red-600" : "text-amber-600";
+
+  return (
+    <div className="p-6">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <select value={filters.service} onChange={e => setFilters(f => ({ ...f, service: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+          <option value="">All Services</option>
+          <option value="gstack-mcp">gstack-mcp</option>
+          <option value="mcp-veo">mcp-veo</option>
+          <option value="mcp-nanobanana">mcp-nanobanana</option>
+          <option value="mcp-lyria">mcp-lyria</option>
+          <option value="mcp-avtool">mcp-avtool</option>
+        </select>
+        <select value={filters.source} onChange={e => setFilters(f => ({ ...f, source: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+          <option value="">All Sources</option>
+          <option value="Web App">Web App</option>
+          <option value="Claude">Claude</option>
+          <option value="Kiro">Kiro</option>
+          <option value="Antigravity">Antigravity</option>
+          <option value="Direct API">Direct API</option>
+        </select>
+        <select value={filters.hours} onChange={e => setFilters(f => ({ ...f, hours: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+          <option value="1">Last 1 hour</option>
+          <option value="6">Last 6 hours</option>
+          <option value="24">Last 24 hours</option>
+          <option value="72">Last 3 days</option>
+          <option value="168">Last 7 days</option>
+        </select>
+        <button onClick={onRefresh} className="px-3 py-1.5 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-1">
+          <RotateCcw className="w-3.5 h-3.5" /> Refresh
+        </button>
+      </div>
+
+      {/* Table */}
+      {!logs ? (
+        <div className="text-center text-steel py-8">Loading cloud logs...</div>
+      ) : logs.length === 0 ? (
+        <div className="text-center text-steel py-8">No requests found for this time range.</div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="text-left px-4 py-3 font-semibold text-navy">Time</th>
+                <th className="text-left px-4 py-3 font-semibold text-navy">Service</th>
+                <th className="text-left px-4 py-3 font-semibold text-navy">Source</th>
+                <th className="text-left px-4 py-3 font-semibold text-navy">Path</th>
+                <th className="text-center px-4 py-3 font-semibold text-navy">Status</th>
+                <th className="text-right px-4 py-3 font-semibold text-navy">Latency</th>
+                <th className="text-left px-4 py-3 font-semibold text-navy">IP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.filter(l => !filters.source || l.source === filters.source).map((l, i) => (
+                <tr key={i} className={`border-b border-gray-100 hover:bg-indigo-50/40 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                  <td className="px-4 py-2.5 text-steel whitespace-nowrap text-xs">{l.timestamp ? new Date(l.timestamp).toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", minute: "2-digit", second: "2-digit" }) : "—"}</td>
+                  <td className="px-4 py-2.5 text-navy font-medium text-xs">{l.service}</td>
+                  <td className="px-4 py-2.5"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sourceColors[l.source] || sourceColors["Direct API"]}`}>{l.source}</span></td>
+                  <td className="px-4 py-2.5 text-steel text-xs truncate max-w-[200px]">{l.path}</td>
+                  <td className={`px-4 py-2.5 text-center font-bold text-xs ${statusColor(l.status)}`}>{l.status}</td>
+                  <td className="px-4 py-2.5 text-right text-steel text-xs">{l.latency || "—"}</td>
+                  <td className="px-4 py-2.5 text-steel text-xs">{l.callerIp}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main AdminPanel ─────────────────────────────────────────────────────────
 
 const TABS = [
   { id: "overview", label: "Overview", icon: Activity },
+  { id: "cloud", label: "Cloud Activity", icon: Globe },
   { id: "users", label: "Users", icon: Users },
   { id: "requests", label: "Request Log", icon: Shield },
   { id: "generations", label: "Generations", icon: Image },
@@ -219,6 +297,8 @@ export default function AdminPanel({ onClose }) {
   const [generations, setGenerations] = useState(null);
   const [liveItems, setLiveItems] = useState([]);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [cloudLogs, setCloudLogs] = useState(null);
+  const [cloudFilters, setCloudFilters] = useState({ service: "", source: "", hours: "24" });
 
   // Load data based on active tab
   useEffect(() => {
@@ -235,6 +315,17 @@ export default function AdminPanel({ onClose }) {
       adminFetch("/admin/generations").then(d => setGenerations(d.generations)).catch(console.error);
     }
   }, [tab]);
+
+  // Fetch cloud logs when tab active or filters change
+  const fetchCloudLogs = useCallback(() => {
+    const params = new URLSearchParams({ hours: cloudFilters.hours, limit: "100" });
+    if (cloudFilters.service) params.set("service", cloudFilters.service);
+    adminFetch(`/admin/cloud-logs?${params}`).then(d => setCloudLogs(d.logs)).catch(console.error);
+  }, [cloudFilters]);
+
+  useEffect(() => {
+    if (tab === "cloud") fetchCloudLogs();
+  }, [tab, fetchCloudLogs]);
 
   // Real-time listener for live feed
   useEffect(() => {
@@ -297,6 +388,7 @@ export default function AdminPanel({ onClose }) {
       {/* Content */}
       <main className="flex-1 overflow-y-auto">
         {tab === "overview" && <OverviewDashboard stats={stats} />}
+        {tab === "cloud" && <CloudActivity logs={cloudLogs} onRefresh={fetchCloudLogs} filters={cloudFilters} setFilters={setCloudFilters} />}
         {tab === "users" && <UsersTable users={users} />}
         {tab === "requests" && <RequestLog requests={requests} onSelect={setSelectedRequest} />}
         {tab === "generations" && <GenerationsGallery generations={generations} />}

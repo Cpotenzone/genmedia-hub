@@ -10,6 +10,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleAuth } from 'google-auth-library';
 import { Storage } from '@google-cloud/storage';
+import { Logging } from '@google-cloud/logging';
 import { createHash } from 'crypto';
 
 const app = initializeApp({ projectId: 'casey-genmedia' });
@@ -18,6 +19,7 @@ const db = getFirestore(app);
 const googleAuth = new GoogleAuth();
 const storage = new Storage({ projectId: 'casey-genmedia' });
 const mediaBucket = storage.bucket('casey-genmedia-output');
+const logging = new Logging({ projectId: 'casey-genmedia' });
 
 const SERVER_ALIASES = {
   'genmedia-veo': 'mcp-veo',
@@ -739,6 +741,53 @@ async function handleAdminRoutes(req, res, path) {
     const snap = await db.collection('generations').orderBy('createdAt', 'desc').limit(pageSize).get();
     const generations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     return res.status(200).json({ generations });
+  }
+
+  // GET /admin/cloud-logs
+  if (path === '/admin/cloud-logs' && req.method === 'GET') {
+    const pageSize = parseInt(req.query.limit) || 100;
+    const service = req.query.service || '';
+    const hours = parseInt(req.query.hours) || 24;
+    const since = new Date(Date.now() - hours * 3600000).toISOString();
+
+    const MCP_SERVICES = ['gstack-mcp', 'mcp-veo', 'mcp-nanobanana', 'mcp-lyria', 'mcp-avtool'];
+    const serviceFilter = service
+      ? `resource.labels.service_name="${service}"`
+      : `resource.labels.service_name=(${MCP_SERVICES.map(s => `"${s}"`).join(' OR ')})`;
+
+    const filter = `resource.type="cloud_run_revision" AND ${serviceFilter} AND httpRequest.requestUrl!="" AND timestamp>="${since}"`;
+
+    const [entries] = await logging.getEntries({
+      filter,
+      orderBy: 'timestamp desc',
+      pageSize,
+    });
+
+    const logs = (entries || []).map(entry => {
+      const hr = entry.metadata?.httpRequest || entry.data?.httpRequest || {};
+      const labels = entry.metadata?.resource?.labels || {};
+      const userAgent = hr.userAgent || '';
+      let source = 'Direct API';
+      if (userAgent.includes('genmedia-hub') || hr.referer?.includes('genmedia')) source = 'Web App';
+      else if (userAgent.includes('claude') || userAgent.includes('Claude')) source = 'Claude';
+      else if (userAgent.includes('kiro') || userAgent.includes('Kiro')) source = 'Kiro';
+      else if (userAgent.includes('antigravity') || userAgent.includes('Antigravity')) source = 'Antigravity';
+
+      return {
+        timestamp: entry.metadata?.timestamp || entry.data?.timestamp || null,
+        service: labels.service_name || '',
+        method: hr.requestMethod || '',
+        path: hr.requestUrl || '',
+        status: hr.status || 0,
+        latency: hr.latency || null,
+        callerIp: hr.remoteIp || '',
+        userAgent,
+        source,
+        responseSize: hr.responseSize || 0,
+      };
+    });
+
+    return res.status(200).json({ logs, count: logs.length });
   }
 
   // GET /admin/stats
