@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { mcpServers } from "../lib/mcpServers";
 import ToolPanel from "./ToolPanel";
+import ConversationPanel from "./ConversationPanel";
 import ExportConfig from "./ExportConfig";
 
 /* Shimmer skeleton shown while a server's tools "load" */
@@ -237,7 +238,11 @@ export default function Dashboard({ user }) {
         </div>
 
         {activeTool ? (
-          <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />
+          activeServer.id === "gstack-mcp" ? (
+            <ConversationPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />
+          ) : (
+            <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />
+          )
         ) : loading ? (
           <ToolGridSkeleton />
         ) : (

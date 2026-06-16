@@ -1612,3 +1612,14 @@ body {
   transition: all 0.3s var(--ease-out);
 }
 .guard-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 26px -6px rgba(116, 62, 228, 0.5); }
+
+/* ============================================================
+   Conversation Panel — chat animations
+   ============================================================ */
+.animate-in {
+  animation: chat-msg-in 0.3s var(--ease-out) both;
+}
+@keyframes chat-msg-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}

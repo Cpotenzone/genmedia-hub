@@ -106,7 +106,7 @@ async function verifyAuthToken(req) {
 /**
  * Forward an MCP tool call to the appropriate Cloud Run service.
  */
-async function forwardToCloudRun(serverUrl, tool, params) {
+async function forwardToCloudRun(serverUrl, tool, params, existingSessionId = null) {
   const fullUrl = `${serverUrl}/mcp`;
   const authHeader = await getIdentityToken(fullUrl);
 
@@ -116,30 +116,34 @@ async function forwardToCloudRun(serverUrl, tool, params) {
     'Authorization': authHeader,
   };
 
-  // Step 1: Initialize session (Streamable HTTP transport)
-  const initResponse = await fetch(fullUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 0,
-      method: 'initialize',
-      params: {
-        protocolVersion: '2024-11-05',
-        capabilities: {},
-        clientInfo: { name: 'genmedia-hub', version: '1.0' },
-      },
-    }),
-  });
+  let sessionId = existingSessionId;
 
-  if (!initResponse.ok) {
-    const errorText = await initResponse.text().catch(() => 'Unknown error');
-    const error = new Error(`MCP init failed (${initResponse.status}): ${errorText}`);
-    error.statusCode = 502;
-    throw error;
+  // Step 1: Initialize session only if we don't have one already
+  if (!sessionId) {
+    const initResponse = await fetch(fullUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'genmedia-hub', version: '1.0' },
+        },
+      }),
+    });
+
+    if (!initResponse.ok) {
+      const errorText = await initResponse.text().catch(() => 'Unknown error');
+      const error = new Error(`MCP init failed (${initResponse.status}): ${errorText}`);
+      error.statusCode = 502;
+      throw error;
+    }
+
+    sessionId = initResponse.headers.get('mcp-session-id');
   }
-
-  const sessionId = initResponse.headers.get('mcp-session-id');
 
   // Step 2: Send tools/call with session ID
   const callHeaders = { ...headers };
@@ -172,7 +176,7 @@ async function forwardToCloudRun(serverUrl, tool, params) {
     throw error;
   }
 
-  return data.result || data;
+  return { result: data.result || data, sessionId };
 }
 
 // ─── Helper: Log Generation to Firestore ─────────────────────────────────────
@@ -220,11 +224,11 @@ export const mcpProxy = onRequest(
       const decodedToken = await verifyAuthToken(req);
       userId = decodedToken.uid;
 
-      // ── Step 2: Extract server, tool, params ──
+      // ── Step 2: Extract server, tool, params, sessionId ──
       // Support both formats:
-      // Format A: POST /api/mcp with body {server, tool, params}
+      // Format A: POST /api/mcp with body {server, tool, params, sessionId}
       // Format B: POST /api/mcp/{server}/{tool} with body as params
-      let { server, tool, params = {} } = req.body;
+      let { server, tool, params = {}, sessionId: existingSessionId } = req.body;
 
       if (!server || !tool) {
         // Try to extract from URL path
@@ -287,7 +291,7 @@ export const mcpProxy = onRequest(
         if (v !== "" && v !== null && v !== undefined) cleanParams[k] = v;
       }
 
-      const result = await forwardToCloudRun(serverConfig.url, tool, cleanParams);
+      const { result, sessionId } = await forwardToCloudRun(serverConfig.url, tool, cleanParams, existingSessionId || null);
       const duration = Date.now() - startTime;
 
       // ── Step 6: Log Success ──
@@ -299,6 +303,7 @@ export const mcpProxy = onRequest(
         server,
         tool,
         result,
+        sessionId: sessionId || null,
         meta: {
           duration,
           timestamp: new Date().toISOString(),
