@@ -1,9 +1,59 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowLeft, X, Send, Loader2, Check, Brain } from "lucide-react";
+import { ArrowLeft, X, Send, Loader2, Check, Brain, ChevronDown, ChevronRight } from "lucide-react";
 import { auth } from "../lib/firebase";
 
-// Parse AskUserQuestion blocks from response text
-function parseQuestions(text) {
+// Parse <mcp_conductor_AskUserQuestion> XML format
+function parseXMLQuestion(text) {
+  const regex = /<mcp_conductor_AskUserQuestion>([\s\S]*?)<\/mcp_conductor_AskUserQuestion>/g;
+  const questions = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const block = match[1];
+    const qMatch = block.match(/<question>([\s\S]*?)<\/question>/);
+    const idMatch = block.match(/<question_id>([\s\S]*?)<\/question_id>/);
+    if (!qMatch) continue;
+    const questionText = qMatch[1].trim();
+    const questionId = idMatch ? idMatch[1].trim() : "q-" + questions.length;
+    // Parse options: lines starting with A), B), C), etc.
+    const lines = questionText.split("\n");
+    const options = [];
+    let title = "";
+    let description = [];
+    let currentOption = null;
+    for (const line of lines) {
+      const optMatch = line.match(/^([A-Z])\)\s+(.+)/);
+      if (optMatch) {
+        if (currentOption) options.push(currentOption);
+        const label = optMatch[2].trim();
+        const recommended = /\(recommended\)/i.test(label);
+        currentOption = {
+          key: optMatch[1],
+          label: label.replace(/\s*\(recommended\)\s*/i, ""),
+          recommended,
+          pros: [],
+          cons: [],
+        };
+      } else if (currentOption && line.trim().startsWith("✅")) {
+        currentOption.pros.push(line.trim().replace(/^✅\s*/, ""));
+      } else if (currentOption && line.trim().startsWith("❌")) {
+        currentOption.cons.push(line.trim().replace(/^❌\s*/, ""));
+      } else if (!currentOption) {
+        // Before first option — part of title/description
+        if (!title && line.trim() && !line.trim().startsWith("✅") && !line.trim().startsWith("❌")) {
+          title = line.trim();
+        } else if (line.trim()) {
+          description.push(line.trim());
+        }
+      }
+    }
+    if (currentOption) options.push(currentOption);
+    questions.push({ id: questionId, title, text: description.join("\n"), options });
+  }
+  return questions;
+}
+
+// Parse Python-style AskUserQuestion(...) format (fallback)
+function parsePythonQuestion(text) {
   const questions = [];
   const regex = /AskUserQuestion\(\s*question_id=['"](.*?)['"],?\s*question_title=['"](.*?)['"],?\s*question_text=["'](.*?)["'],?\s*options=\[([\s\S]*?)\]\s*\)/g;
   let match;
@@ -13,11 +63,65 @@ function parseQuestions(text) {
     const optRegex = /\{\s*key:\s*['"](.*?)['"],\s*label:\s*['"](.*?)['"],\s*description:\s*['"](.*?)['"]\s*\}/g;
     let optMatch;
     while ((optMatch = optRegex.exec(optionsRaw)) !== null) {
-      options.push({ key: optMatch[1], label: optMatch[2], description: optMatch[3] });
+      options.push({ key: optMatch[1], label: optMatch[2], description: optMatch[3], pros: [], cons: [], recommended: false });
     }
     questions.push({ id, title, text: questionText, options });
   }
   return questions;
+}
+
+// Parse <gstack-qid:...> followed by AskUserQuestion(...)
+function parseGstackQuestion(text) {
+  const questions = [];
+  const regex = /<gstack-qid:(.*?)>\s*AskUserQuestion\(([\s\S]*?)\)/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const id = match[1].trim();
+    const inner = match[2];
+    const titleMatch = inner.match(/question_title=['"](.*?)['"]/);
+    const textMatch = inner.match(/question_text=['"](.*?)['"]/);
+    const title = titleMatch ? titleMatch[1] : "";
+    const qText = textMatch ? textMatch[1] : "";
+    const options = [];
+    const optRegex = /\{\s*key:\s*['"](.*?)['"],\s*label:\s*['"](.*?)['"](?:,\s*description:\s*['"](.*?)['"])?\s*\}/g;
+    let optMatch;
+    while ((optMatch = optRegex.exec(inner)) !== null) {
+      options.push({ key: optMatch[1], label: optMatch[2], description: optMatch[3] || "", pros: [], cons: [], recommended: false });
+    }
+    questions.push({ id, title, text: qText, options });
+  }
+  return questions;
+}
+
+// Combined question parser
+function parseQuestions(text) {
+  let questions = parseXMLQuestion(text);
+  if (questions.length === 0) questions = parseGstackQuestion(text);
+  if (questions.length === 0) questions = parsePythonQuestion(text);
+  return questions;
+}
+
+// Extract <thinking> blocks
+function extractThinking(text) {
+  const blocks = [];
+  const regex = /<thinking>([\s\S]*?)<\/thinking>/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    blocks.push(match[1].trim());
+  }
+  return blocks;
+}
+
+// Strip question blocks, thinking blocks, and stray XML tags from display text
+function stripSpecialBlocks(text) {
+  let clean = text;
+  clean = clean.replace(/<mcp_conductor_AskUserQuestion>[\s\S]*?<\/mcp_conductor_AskUserQuestion>/g, "");
+  clean = clean.replace(/<thinking>[\s\S]*?<\/thinking>/g, "");
+  clean = clean.replace(/<gstack-qid:.*?>\s*AskUserQuestion\([\s\S]*?\)/g, "");
+  clean = clean.replace(/AskUserQuestion\([\s\S]*?\)\s*/g, "");
+  // Strip remaining XML-like tags that aren't meaningful content
+  clean = clean.replace(/<\/?[a-zA-Z_][a-zA-Z0-9_-]*(?:\s[^>]*)?\s*>/g, "");
+  return clean.trim();
 }
 
 // Simple markdown-to-JSX renderer
@@ -26,7 +130,6 @@ function Markdown({ text }) {
   const lines = text.split("\n");
   const elements = [];
   let i = 0;
-
   while (i < lines.length) {
     const line = lines[i];
     if (line.startsWith("### ")) {
@@ -56,7 +159,6 @@ function Markdown({ text }) {
 }
 
 function renderInline(text) {
-  // Handle **bold** and *italic*
   const parts = [];
   let remaining = text;
   let key = 0;
@@ -75,50 +177,106 @@ function renderInline(text) {
   return parts;
 }
 
-// Strip AskUserQuestion blocks from text for display
-function stripQuestionBlocks(text) {
-  return text.replace(/AskUserQuestion\([\s\S]*?\)\s*/g, "").trim();
+// Thinking block component (collapsed by default)
+function ThinkingBlock({ content }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-3 border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        Show thinking
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-1">
+          <pre className="text-xs text-gray-400 font-mono whitespace-pre-wrap leading-relaxed">{content}</pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
-function QuestionCard({ question, onSelect, selectedKey }) {
+// Interactive question card with options
+function QuestionCard({ question, selectedKey, onSubmit }) {
+  const [selected, setSelected] = useState(null);
+  const isLocked = !!selectedKey;
+
+  const handleSubmit = () => {
+    if (selected && onSubmit) onSubmit(selected);
+  };
+
+  const activeKey = isLocked ? selectedKey : selected;
+
   return (
     <div className="mt-3 bg-gray-50 rounded-xl p-4 border border-gray-200">
-      <h4 className="text-sm font-bold text-navy mb-1">{question.title}</h4>
-      <p className="text-sm text-steel mb-3">{question.text}</p>
+      {question.title && <h4 className="text-sm font-bold text-navy mb-1">{question.title}</h4>}
+      {question.text && <p className="text-sm text-steel mb-3">{question.text}</p>}
       <div className="space-y-2">
         {question.options.map((opt) => (
           <button
             key={opt.key}
-            onClick={() => onSelect(opt.key, opt.label)}
-            disabled={!!selectedKey}
+            onClick={() => !isLocked && setSelected(opt.key)}
+            disabled={isLocked}
             className={`w-full text-left p-3 rounded-lg border transition-all duration-200
-              ${selectedKey === opt.key
-                ? "border-tech-blue bg-tech-blue/5 shadow-sm"
-                : selectedKey
+              ${activeKey === opt.key
+                ? "border-blue-500 bg-blue-50 shadow-sm ring-2 ring-blue-200"
+                : isLocked
                   ? "border-gray-200 bg-white opacity-50 cursor-not-allowed"
-                  : "border-gray-200 bg-white hover:border-tech-blue hover:shadow-sm cursor-pointer"
+                  : "border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm cursor-pointer"
               }`}
           >
             <div className="flex items-start gap-3">
               <span className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold
-                ${selectedKey === opt.key ? "bg-tech-blue text-white" : "bg-gray-100 text-navy"}`}>
-                {selectedKey === opt.key ? <Check className="w-4 h-4" /> : opt.key}
+                ${activeKey === opt.key ? "bg-blue-500 text-white" : "bg-gray-100 text-navy"}`}>
+                {isLocked && activeKey === opt.key ? <Check className="w-4 h-4" /> : opt.key}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-navy">{opt.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-navy">{opt.label}</p>
+                  {opt.recommended && (
+                    <span className="text-[10px] font-bold uppercase bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Recommended</span>
+                  )}
+                </div>
                 {opt.description && <p className="text-xs text-steel mt-0.5">{opt.description}</p>}
+                {opt.pros && opt.pros.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {opt.pros.map((p, i) => (
+                      <p key={i} className="text-xs text-green-700">✅ {p}</p>
+                    ))}
+                  </div>
+                )}
+                {opt.cons && opt.cons.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {opt.cons.map((c, i) => (
+                      <p key={i} className="text-xs text-red-600">❌ {c}</p>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </button>
         ))}
       </div>
+      {!isLocked && (
+        <button
+          onClick={handleSubmit}
+          disabled={!selected}
+          className="mt-3 w-full px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Submit
+        </button>
+      )}
     </div>
   );
 }
 
 function AgentMessage({ message }) {
-  const questions = parseQuestions(message.raw || "");
-  const cleanText = stripQuestionBlocks(message.raw || message.text || "");
+  const raw = message.raw || message.text || "";
+  const questions = parseQuestions(raw);
+  const thinkingBlocks = extractThinking(raw);
+  const cleanText = stripSpecialBlocks(raw);
 
   return (
     <div className="flex gap-3 items-start animate-in">
@@ -127,13 +285,14 @@ function AgentMessage({ message }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="bg-white border-l-4 border-tech-blue rounded-r-xl p-4 shadow-sm">
+          {thinkingBlocks.map((tb, i) => <ThinkingBlock key={i} content={tb} />)}
           {cleanText && <Markdown text={cleanText} />}
           {questions.map((q) => (
             <QuestionCard
               key={q.id}
               question={q}
               selectedKey={message.selectedOption}
-              onSelect={message.onSelect}
+              onSubmit={(key) => message.onSelect && message.onSelect(key)}
             />
           ))}
         </div>
@@ -178,34 +337,22 @@ export default function ConversationPanel({ tool, server, onClose }) {
     try {
       const token = await auth.currentUser?.getIdToken();
       if (!token) throw new Error("Not authenticated");
-
-      const body = {
-        server: server.id,
-        tool: tool.id,
-        params,
-      };
+      const body = { server: server.id, tool: tool.id, params };
       if (isFollowUp && sessionId) body.sessionId = sessionId;
-
       const response = await fetch("/api/mcp", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
-
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.error || `Request failed (${response.status})`);
       }
-
       const data = await response.json();
       if (data.sessionId) setSessionId(data.sessionId);
-
-      // Extract text content from MCP result
       const content = data.result?.content || [];
       const textBlocks = content.filter((b) => b.type === "text").map((b) => b.text).join("\n\n");
-      const rawText = textBlocks || JSON.stringify(data.result, null, 2);
-
-      return rawText;
+      return textBlocks || JSON.stringify(data.result, null, 2);
     } catch (err) {
       return `Error: ${err.message}`;
     } finally {
@@ -216,18 +363,13 @@ export default function ConversationPanel({ tool, server, onClose }) {
   const handleStart = async (e) => {
     e.preventDefault();
     setStarted(true);
-
-    // Build params from form
     const cleanParams = {};
     for (const [k, v] of Object.entries(formData)) {
       if (v !== "" && v !== null && v !== undefined) cleanParams[k] = v;
     }
-
-    // Add user message
     const promptField = tool.parameters.find((p) => p.type === "textarea") || tool.parameters[0];
     const userText = formData[promptField?.name] || JSON.stringify(cleanParams);
     setMessages([{ role: "user", text: userText, time: timeNow() }]);
-
     const rawResponse = await sendToMcp(cleanParams, false);
     addAgentMessage(rawResponse);
   };
@@ -237,7 +379,6 @@ export default function ConversationPanel({ tool, server, onClose }) {
       ...prev,
       { role: "agent", raw: rawText, time: timeNow(), selectedOption: null, onSelect: null },
     ]);
-    // Attach onSelect handler for the latest message
     setTimeout(() => {
       setMessages((prev) => {
         const updated = [...prev];
@@ -245,7 +386,7 @@ export default function ConversationPanel({ tool, server, onClose }) {
         if (updated[lastAgent]?.role === "agent") {
           updated[lastAgent] = {
             ...updated[lastAgent],
-            onSelect: (key, label) => handleOptionSelect(lastAgent, key, label),
+            onSelect: (key) => handleOptionSelect(lastAgent, key),
           };
         }
         return updated;
@@ -253,18 +394,13 @@ export default function ConversationPanel({ tool, server, onClose }) {
     }, 0);
   };
 
-  const handleOptionSelect = async (msgIndex, key, label) => {
-    // Mark selection
+  const handleOptionSelect = async (msgIndex, key) => {
     setMessages((prev) => {
       const updated = [...prev];
       updated[msgIndex] = { ...updated[msgIndex], selectedOption: key };
       return updated;
     });
-
-    // Add user message
-    setMessages((prev) => [...prev, { role: "user", text: `${key}: ${label}`, time: timeNow() }]);
-
-    // Send follow-up
+    setMessages((prev) => [...prev, { role: "user", text: key, time: timeNow() }]);
     const rawResponse = await sendToMcp({ response: key }, true);
     addAgentMessage(rawResponse);
   };
@@ -305,7 +441,6 @@ export default function ConversationPanel({ tool, server, onClose }) {
       {/* Messages area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {!started ? (
-          /* Initial form */
           <div className="max-w-lg mx-auto mt-8">
             <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
               <p className="text-sm text-steel mb-4">{tool.description}</p>
@@ -376,7 +511,7 @@ export default function ConversationPanel({ tool, server, onClose }) {
         )}
       </div>
 
-      {/* Input bar (visible after conversation starts) */}
+      {/* Input bar */}
       {started && (
         <div className="border-t border-gray-200 p-4">
           <form onSubmit={handleFreeInput} className="flex gap-2">
