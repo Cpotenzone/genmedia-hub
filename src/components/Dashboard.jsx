@@ -1,12 +1,12 @@
 import React, { useState, useEffect, memo } from "react";
-import { ChevronRight, Menu, X, Wrench, Sparkles, Terminal, FolderDown, Clock } from "lucide-react";
+import { ChevronRight, Menu, X, Wrench, Sparkles, Terminal, FolderDown, Clock, Zap } from "lucide-react";
 import { mcpServers } from "../lib/mcpServers";
 import ToolPanel from "./ToolPanel";
 import ConversationPanel from "./ConversationPanel";
 import ExportConfig from "./ExportConfig";
 import SessionSidebar from "./SessionSidebar";
 import GenerationHistory from "./GenerationHistory";
-import JobQueue from "./JobQueue";
+import JobQueue, { JobQueuePanel, useJobs } from "./JobQueue";
 
 const SERVER_ALIASES_FE = {
   "gstack-mcp": "gstack-mcp",
@@ -48,7 +48,7 @@ function ToolGridSkeleton() {
   );
 }
 
-function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport, onHistory }) {
+function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExport, onHistory, onQueue, pendingJobCount }) {
   return (
     <>
       {isOpen && <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={onClose} />}
@@ -94,6 +94,19 @@ function Sidebar({ servers, activeServer, onSelectServer, isOpen, onClose, onExp
           })}
         </nav>
         <div className="p-3 border-t border-white/10 space-y-2">
+          <button
+            onClick={() => { onQueue(); onClose(); }}
+            aria-label="View job queue"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left bg-white/5 border border-white/10 text-white/80 hover:bg-white/10 hover:border-amber-400/40 hover:text-white transition-all duration-200 active:scale-[0.98]"
+          >
+            <Zap className="w-4 h-4 text-amber-300" />
+            <span className="text-sm font-medium">Job Queue</span>
+            {pendingJobCount > 0 && (
+              <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 text-[10px] font-bold bg-amber-400 text-navy rounded-full px-1.5 animate-pulse">
+                {pendingJobCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => { onHistory(); onClose(); }}
             aria-label="View generation history"
@@ -187,6 +200,8 @@ export default function Dashboard({ user }) {
   const [exportServerId, setExportServerId] = useState(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
+  const [queueOpen, setQueueOpen] = useState(false);
+  const { pendingCount } = useJobs();
 
   useEffect(() => {
     const lastSessionId = localStorage.getItem("genmedia-last-session");
@@ -203,6 +218,7 @@ export default function Dashboard({ user }) {
 
   const handleSelectSession = (session) => {
     setActiveSession(session);
+    setQueueOpen(false);
     localStorage.setItem("genmedia-last-session", session.id);
     const srv = mcpServers.find((s) => s.id === session.serverId || SERVER_ALIASES_FE[session.serverId] === s.id);
     if (srv) {
@@ -229,6 +245,9 @@ export default function Dashboard({ user }) {
   };
 
   const renderMainContent = () => {
+    if (queueOpen) {
+      return <JobQueuePanel onViewJob={(job) => {}} />;
+    }
     if (activeTool && activeSession) {
       if (activeServer.id === "gstack-mcp") {
         return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => { setActiveTool(null); setActiveSession(null); }} resumeSession={activeSession} />;
@@ -242,7 +261,7 @@ export default function Dashboard({ user }) {
       return <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />;
     }
     if (loading) return <ToolGridSkeleton />;
-    return <ServerView key={activeServer.id} server={activeServer} onSelectTool={setActiveTool} onExport={openExport} />;
+    return <ServerView key={activeServer.id} server={activeServer} onSelectTool={(t) => { setActiveTool(t); setQueueOpen(false); }} onExport={openExport} />;
   };
 
   return (
@@ -250,11 +269,13 @@ export default function Dashboard({ user }) {
       <Sidebar
         servers={mcpServers}
         activeServer={activeServer}
-        onSelectServer={(server) => { setActiveServer(server); setActiveTool(null); setActiveSession(null); }}
+        onSelectServer={(server) => { setActiveServer(server); setActiveTool(null); setActiveSession(null); setQueueOpen(false); }}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onExport={() => { openExport(null); setSidebarOpen(false); }}
         onHistory={() => setHistoryOpen(true)}
+        onQueue={() => { setQueueOpen(true); setActiveTool(null); setActiveSession(null); }}
+        pendingJobCount={pendingCount}
       />
       <SessionSidebar activeSessionId={activeSession?.id} onSelectSession={handleSelectSession} onNewSession={handleNewSession} />
       <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
