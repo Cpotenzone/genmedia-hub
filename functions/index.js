@@ -447,6 +447,7 @@ async function handleMcpCall(req, res) {
       createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(), lastMessage: promptText.slice(0, 100),
     });
     firestoreSessionId = sessionRef.id;
+    console.log(`[mcpProxy] Session created: ${firestoreSessionId} for user ${userId}`);
   } else {
     await db.collection('sessions').doc(firestoreSessionId).update({
       mcpSessionId: mcpSessionId || FieldValue.delete(), updatedAt: FieldValue.serverTimestamp(), lastMessage: promptText.slice(0, 100),

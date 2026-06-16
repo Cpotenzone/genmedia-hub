@@ -12,6 +12,7 @@ import AuthButton from "./components/AuthButton";
 import AuthGuard from "./components/AuthGuard";
 import Landing from "./components/Landing";
 import Dashboard from "./components/Dashboard";
+import { ToastProvider } from "./components/Toast";
 import "./App.css";
 
 export default function App() {
@@ -87,32 +88,34 @@ export default function App() {
   }
 
   return (
-    <div>
-      <nav className="nav">
-        <div className="nav-inner">
-          <span className="nav-brand">
-            <span className="nav-brand-mark"><Layers size={17} /></span>
-            GenMedia Hub
-          </span>
-          <AuthButton
-            user={user}
-            onSignIn={handleSignIn}
-            onSignOut={handleSignOut}
-            signingIn={signingIn}
-            authError={authError}
-          />
-        </div>
-      </nav>
-
-      {user ? (
-        <AuthGuard user={user} loading={false} onSignOut={handleSignOut}>
-          <div className="view-fade" key="dashboard">
-            <Dashboard user={user} />
+    <ToastProvider>
+      <div>
+        <nav className="nav">
+          <div className="nav-inner">
+            <span className="nav-brand">
+              <span className="nav-brand-mark"><Layers size={17} /></span>
+              GenMedia Hub
+            </span>
+            <AuthButton
+              user={user}
+              onSignIn={handleSignIn}
+              onSignOut={handleSignOut}
+              signingIn={signingIn}
+              authError={authError}
+            />
           </div>
-        </AuthGuard>
-      ) : (
-        <Landing onSignIn={handleSignIn} />
-      )}
-    </div>
+        </nav>
+
+        {user ? (
+          <AuthGuard user={user} loading={false} onSignOut={handleSignOut}>
+            <div className="view-fade" key="dashboard">
+              <Dashboard user={user} />
+            </div>
+          </AuthGuard>
+        ) : (
+          <Landing onSignIn={handleSignIn} />
+        )}
+      </div>
+    </ToastProvider>
   );
 }

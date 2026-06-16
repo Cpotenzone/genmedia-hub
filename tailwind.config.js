@@ -7,6 +7,7 @@ export default {
     extend: {
       colors: {
         navy: '#1E3A8A',
+        'navy-deep': '#16306e',
         'tech-blue': '#3B82F6',
         indigo: '#743EE4',
         steel: '#6B7280',
