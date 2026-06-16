@@ -10,7 +10,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleAuth } from 'google-auth-library';
 
-const app = initializeApp();
+const app = initializeApp({ projectId: 'casey-genmedia' });
 const auth = getAuth(app);
 const db = getFirestore(app);
 const googleAuth = new GoogleAuth();
