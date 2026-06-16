@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowLeft, X, Send, Loader2, Check, Brain, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, X, Send, Loader2, Check, Brain } from "lucide-react";
 import { auth } from "../lib/firebase";
 
 // Parse <mcp_conductor_AskUserQuestion> XML format
@@ -70,20 +70,20 @@ function parsePythonQuestion(text) {
   return questions;
 }
 
-// Parse <gstack-qid:...> followed by AskUserQuestion(...)
+// Parse <gstack-qid:...> followed by AskUserQuestion(...) — handles optional <tool_code> wrapper
 function parseGstackQuestion(text) {
   const questions = [];
-  const regex = /<gstack-qid:(.*?)>\s*AskUserQuestion\(([\s\S]*?)\)/g;
+  const regex = /<gstack-qid:(.*?)>\s*(?:<tool_code>\s*)?(AskUserQuestion\([\s\S]*?\)\s*)(?:<\/tool_code>)?/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
     const id = match[1].trim();
     const inner = match[2];
-    const titleMatch = inner.match(/question_title=['"](.*?)['"]/);
-    const textMatch = inner.match(/question_text=['"](.*?)['"]/);
+    const titleMatch = inner.match(/question_title\s*=\s*['"]([\s\S]*?)['"]/);
+    const textMatch = inner.match(/question_text\s*=\s*["']([\s\S]*?)["']\s*,?\s*(?:options|$|\))/);
     const title = titleMatch ? titleMatch[1] : "";
     const qText = textMatch ? textMatch[1] : "";
     const options = [];
-    const optRegex = /\{\s*key:\s*['"](.*?)['"],\s*label:\s*['"](.*?)['"](?:,\s*description:\s*['"](.*?)['"])?\s*\}/g;
+    const optRegex = /\{\s*['"]?key['"]?\s*:\s*['"](.*?)['"],\s*['"]?label['"]?\s*:\s*['"](.*?)['"](?:,\s*['"]?description['"]?\s*:\s*['"]([\s\S]*?)['"])?\s*\}/g;
     let optMatch;
     while ((optMatch = optRegex.exec(inner)) !== null) {
       options.push({ key: optMatch[1], label: optMatch[2], description: optMatch[3] || "", pros: [], cons: [], recommended: false });
@@ -177,23 +177,14 @@ function renderInline(text) {
   return parts;
 }
 
-// Thinking block component (collapsed by default)
+// Thinking block component (always visible, inline)
 function ThinkingBlock({ content }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="mb-3 border border-gray-200 rounded-lg overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
-      >
-        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        Show thinking
-      </button>
-      {open && (
-        <div className="px-3 pb-3 pt-1">
-          <pre className="text-xs text-gray-400 font-mono whitespace-pre-wrap leading-relaxed">{content}</pre>
-        </div>
-      )}
+    <div className="mb-3 rounded-lg border-l-[3px] border-l-gray-200 bg-[#F9FAFB] pl-4 pr-3 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">💭 Thinking</p>
+      <div className="text-[0.875rem] leading-relaxed [&_p]:!text-[#6B7280] [&_li]:!text-[#6B7280] [&_h1]:!text-[#4B5563] [&_h2]:!text-[#4B5563] [&_h3]:!text-[#4B5563] [&_strong]:!text-[#4B5563]">
+        <Markdown text={content} />
+      </div>
     </div>
   );
 }
@@ -527,9 +518,13 @@ export default function ConversationPanel({ tool, server, onClose, resumeSession
                   <Brain className="w-4 h-4 text-white" />
                 </div>
                 <div className="bg-white border-l-4 border-tech-blue rounded-r-xl p-4 shadow-sm">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mb-2">
                     <Loader2 className="w-4 h-4 text-tech-blue animate-spin" />
-                    <span className="text-sm text-steel">Thinking...</span>
+                    <span className="text-sm font-medium text-navy">Agent is thinking...</span>
+                  </div>
+                  <div className="rounded-lg border-l-[3px] border-l-gray-200 bg-[#F9FAFB] pl-4 pr-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">💭 Processing</p>
+                    <p className="text-xs text-[#6B7280] animate-pulse">Analyzing your request and formulating a response...</p>
                   </div>
                 </div>
               </div>
