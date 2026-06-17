@@ -430,12 +430,13 @@ async function handleGetSessions(req, res, path) {
   const pageSize = parseInt(req.query.limit) || 50;
   const sessionsQuery = db.collection('sessions')
     .where('userId', '==', userId)
-    .where('deleted', '!=', true)
     .orderBy('updatedAt', 'desc')
     .limit(pageSize);
 
   const snap = await sessionsQuery.get();
-  const sessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const sessions = snap.docs
+    .filter(d => d.data().deleted !== true)
+    .map(d => ({ id: d.id, ...d.data() }));
   res.status(200).json({ sessions });
 }
 
@@ -467,13 +468,15 @@ async function handleGetGenerations(req, res) {
   const server = req.query.server;
   const tool = req.query.tool;
 
-  let q = db.collection('generations').where('userId', '==', userId).where('deletedAt', '==', null);
+  let q = db.collection('generations').where('userId', '==', userId);
   if (server) q = q.where('serverId', '==', server);
   if (tool) q = q.where('toolId', '==', tool);
   q = q.orderBy('createdAt', 'desc').limit(pageSize);
 
   const snap = await q.get();
-  const generations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const generations = snap.docs
+    .filter(d => d.data().deletedAt == null)
+    .map(d => ({ id: d.id, ...d.data() }));
   res.status(200).json({ generations });
 }
 
