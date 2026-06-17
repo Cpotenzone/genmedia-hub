@@ -5,7 +5,7 @@ import { formatTime as fmtTime } from "../lib/dateUtils";
 import { AgentMessage, UserMessage } from "./ChatComponents";
 import { useToast } from "./Toast";
 
-export default function ConversationPanel({ tool, server, onClose, resumeSession }) {
+export default function ConversationPanel({ tool, server, onClose, resumeSession, onSessionCreated }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,6 +87,7 @@ export default function ConversationPanel({ tool, server, onClose, resumeSession
       if (data.sessionId && !sessionId) {
         setSessionId(data.sessionId);
         localStorage.setItem("genmedia-last-session", data.sessionId);
+        if (onSessionCreated) onSessionCreated(data.sessionId);
         if (toast) toast("Session created", "success");
       } else if (data.sessionId) {
         setSessionId(data.sessionId);

@@ -16,7 +16,7 @@ function SkeletonItems() {
   );
 }
 
-export default function SessionSidebar({ activeSessionId, onSelectSession, onNewSession }) {
+export default function SessionSidebar({ activeSessionId, onSelectSession, onNewSession, refreshKey }) {
   const [sessions, setSessions] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,13 @@ export default function SessionSidebar({ activeSessionId, onSelectSession, onNew
     }
   }, []);
 
-  useEffect(() => { fetchSessions(); }, [fetchSessions]);
+  useEffect(() => { fetchSessions(); }, [fetchSessions, refreshKey]);
+
+  // Poll every 10s to keep sidebar fresh
+  useEffect(() => {
+    const interval = setInterval(fetchSessions, 10000);
+    return () => clearInterval(interval);
+  }, [fetchSessions]);
 
   // Debounce search input
   useEffect(() => {

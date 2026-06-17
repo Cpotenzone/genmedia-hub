@@ -213,6 +213,7 @@ export default function Dashboard({ user }) {
   const [activeSession, setActiveSession] = useState(null);
   const [queueOpen, setQueueOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
   const { pendingCount } = useJobs();
   const admin = isAdminUser(user);
 
@@ -263,13 +264,13 @@ export default function Dashboard({ user }) {
     }
     if (activeTool && activeSession) {
       if (activeServer.id === "gstack-mcp") {
-        return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => { setActiveTool(null); setActiveSession(null); }} resumeSession={activeSession} />;
+        return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => { setActiveTool(null); setActiveSession(null); }} resumeSession={activeSession} onSessionCreated={() => setSessionRefreshKey(k => k + 1)} />;
       }
       return <ToolPanel tool={activeTool} server={activeServer} onClose={() => { setActiveTool(null); setActiveSession(null); }} />;
     }
     if (activeTool) {
       if (activeServer.id === "gstack-mcp") {
-        return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />;
+        return <ConversationPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} onSessionCreated={() => setSessionRefreshKey(k => k + 1)} />;
       }
       return <ToolPanel tool={activeTool} server={activeServer} onClose={() => setActiveTool(null)} />;
     }
@@ -292,7 +293,7 @@ export default function Dashboard({ user }) {
         isAdmin={admin}
         onAdmin={() => setAdminOpen(true)}
       />
-      <SessionSidebar activeSessionId={activeSession?.id} onSelectSession={handleSelectSession} onNewSession={handleNewSession} />
+      <SessionSidebar activeSessionId={activeSession?.id} onSelectSession={handleSelectSession} onNewSession={handleNewSession} refreshKey={sessionRefreshKey} />
       <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
         <div className="lg:hidden flex items-center gap-3 p-4 border-b border-gray-200 bg-white sticky top-0 z-30">
           <button onClick={() => setSidebarOpen(true)} aria-label="Open menu" className="p-2 rounded-xl hover:bg-gray-100 text-steel hover:text-navy transition-all duration-200">
